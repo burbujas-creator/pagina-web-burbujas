@@ -1,11 +1,12 @@
 // /api/chat.js
 
 export default async function handler(req, res) {
-  // ✅ Permitir que burbujas.online haga las peticiones
-  res.setHeader("Access-Control-Allow-Origin", "https://www.burbujas.online");
+  // 🔑 Configurar cabeceras CORS
+  res.setHeader("Access-Control-Allow-Origin", "https://www.burbujas.online"); // tu dominio
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
+  // Preflight request
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -21,16 +22,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // 🔑 API Keys guardadas en Vercel > Settings > Environment Variables
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    const elevenApiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
-    // 1️⃣ Generar respuesta de texto con OpenAI
+    // Llamada a OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -44,36 +43,32 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: data.error.message });
     }
 
-    const reply = data.choices?.[0]?.message?.content || "Lo siento, no pude generar una respuesta.";
+    const reply =
+      data.choices?.[0]?.message?.content ||
+      "Lo siento, no pude generar una respuesta.";
 
-    // 2️⃣ Generar audio con ElevenLabs (voz rioplatense)
-    const voiceId = "EXAVITQu4vr4xnSDxMaL"; // podés cambiarlo por otra voz más natural
-    const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    // Generar también audio estilo rioplatense
+    const audioRes = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "xi-api-key": elevenApiKey,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        text: reply,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.6, similarity_boost: 0.9 },
+        model: "gpt-4o-mini-tts",
+        voice: "alloy", // voz clara
+        input: reply,
+        language: "es-419", // español latino
+        accent: "es-AR", // rioplatense
       }),
     });
 
-    if (!ttsResponse.ok) {
-      return res.status(500).json({ error: "Error en la generación de audio" });
-    }
+    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
-    const audioBuffer = await ttsResponse.arrayBuffer();
-    const audioBase64 = Buffer.from(audioBuffer).toString("base64");
-
-    // 3️⃣ Responder con texto + audio en base64
     res.status(200).json({
       reply,
-      audio: `data:audio/mpeg;base64,${audioBase64}`,
+      audio: `data:audio/mp3;base64,${audioBuffer.toString("base64")}`,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
