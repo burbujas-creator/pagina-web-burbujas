@@ -21,17 +21,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // 🔑 Tu API KEY de OpenAI (guardala en Vercel > Settings > Environment Variables)
-    const apiKey = process.env.OPENAI_API_KEY;
+    // 🔑 API Keys guardadas en Vercel > Settings > Environment Variables
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const elevenApiKey = process.env.ELEVENLABS_API_KEY;
 
+    // 1️⃣ Generar respuesta de texto con OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // rápido y económico
+        model: "gpt-4o-mini",
         messages: conversationHistory,
       }),
     });
@@ -44,10 +46,36 @@ export default async function handler(req, res) {
 
     const reply = data.choices?.[0]?.message?.content || "Lo siento, no pude generar una respuesta.";
 
-    res.status(200).json({ reply });
+    // 2️⃣ Generar audio con ElevenLabs (voz rioplatense)
+    const voiceId = "EXAVITQu4vr4xnSDxMaL"; // ejemplo de voz (puede ser sustituida por otra de estilo rioplatense)
+    const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "xi-api-key": elevenApiKey,
+      },
+      body: JSON.stringify({
+        text: reply,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.6, similarity_boost: 0.9 },
+      }),
+    });
+
+    if (!ttsResponse.ok) {
+      return res.status(500).json({ error: "Error en la generación de audio" });
+    }
+
+    const audioBuffer = await ttsResponse.arrayBuffer();
+    const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+
+    // 3️⃣ Responder con texto + audio en base64
+    res.status(200).json({
+      reply,
+      audio: `data:audio/mpeg;base64,${audioBase64}`,
+    });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
-
