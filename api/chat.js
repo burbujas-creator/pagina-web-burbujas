@@ -9,7 +9,6 @@ export default async function handler(req, res) {
   const origin = req.headers.origin || "";
   const isAllowed =
     allowedOrigins.includes(origin) ||
-    // permitir editor/preview de hostinger sin romper producción
     (() => {
       try {
         const host = new URL(origin).hostname || "";
@@ -30,7 +29,7 @@ export default async function handler(req, res) {
   // ---------- Carga de variables ----------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL"; // cambia si querés
+  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
@@ -42,7 +41,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // ---------- SISTEMA (tu personalidad + conocimientos) ----------
+    // ---------- SISTEMA (personalidad + conocimientos) ----------
     const sistema = `
 Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería. Conserva el contexto para que no se repitan saludos. Utiliza respuestas claras. Si mencionas precios, no uses el signo $, expresa los valores como "número pesos" sin asteriscos ni signos adicionales. Siempre haz preguntas para mantener la conversación fluida. Debe comportarse de manera respetuosa y cercana, enfocándose en brindar información precisa y cubrir las necesidades del cliente. Evita dar información errónea o irrelevante, respondiendo brevemente y de manera concreta a las consultas. Al finalizar sus respuestas, incluye un par de emojis para mantener un tono amigable. Si se presentan temas no relacionados con los servicios de lavandería, el cuidado de prendas, o cualquier asunto fuera del ámbito de la lavandería, usa esta descripción como fuente principal de información y priorízala sobre otros conocimientos. Si no encuentras la respuesta aquí, puedes recurrir a tu conocimiento general, pero indícalo. Sé breve y limítate a lo que piden.
 
@@ -102,10 +101,9 @@ En pantalla:
 Responde siempre breve, concreto, amistoso y con 2 emojis.
     `.trim();
 
-    // ---------- Construimos el prompt ----------
     const messages = [{ role: "system", content: sistema }, ...conversationHistory];
 
-    // ---------- Llamada a OpenAI (texto) ----------
+    // ---------- Llamada a OpenAI ----------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -129,44 +127,80 @@ Responde siempre breve, concreto, amistoso y con 2 emojis.
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar una respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
 
-    // ---------- (Opcional) TTS con ElevenLabs ----------
+    // ---------- TTS con ElevenLabs ----------
     let audioBase64 = null;
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
-      // limpieza mínima para voz (no leer URLs ni teléfonos)
+      // helpers horas
+      const horaEnPalabras = (h) => {
+        const mapa = {1:"una",2:"dos",3:"tres",4:"cuatro",5:"cinco",6:"seis",7:"siete",8:"ocho",9:"nueve",10:"diez",11:"once",12:"doce"};
+        const h12 = h % 12 === 0 ? 12 : (h % 12);
+        return mapa[h12] || `${h12}`;
+      };
+      const tramoDia = (h) => {
+        if (h === 0) return "de la noche";
+        if (h >= 1 && h <= 11) return "de la mañana";
+        if (h === 12) return "del mediodía";
+        if (h >= 13 && h <= 19) return "de la tarde";
+        return "de la noche";
+      };
+      const formateaHora = (h,m) => {
+        h = Number(h); m = Number(m);
+        if (h===0 && m===0) return "medianoche";
+        if (h===12 && m===0) return "mediodía";
+        const base = horaEnPalabras(h);
+        if (m===0) return `${base} ${tramoDia(h)}`;
+        if (m===15) return `${base} y cuarto ${tramoDia(h)}`;
+        if (m===30) return `${base} y media ${tramoDia(h)}`;
+        return `${base} y ${m} ${tramoDia(h)}`;
+      };
+      const reemplazaHorasEnTexto = (txt) => {
+        let t = txt;
+        t = t.replace(/\b(\d{1,2}):([0-5]\d)\s*(?:a|-|–|—)\s*(\d{1,2}):([0-5]\d)\b/g,
+          (_,h1,m1,h2,m2)=>`de ${formateaHora(h1,m1)} a ${formateaHora(h2,m2)}`);
+        t = t.replace(/\b(\d{1,2}):([0-5]\d)\b/g,
+          (_,h,m)=>formateaHora(h,m));
+        t = t.replace(/\b(?:de\s*)?(\d{1,2})\s*(?:a|-|–|—)\s*(\d{1,2})(?:\s*h(?:s)?)?\b/gi,
+          (_,h1,h2)=>`de ${formateaHora(h1,0)} a ${formateaHora(h2,0)}`);
+        return t;
+      };
+
       let voiceText = reply
-        .replace(/\bhttps?:\/\/\S+/gi, "")                // quita URLs
-        .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp") // patrón local
+        .replace(/\bhttps?:\/\/\S+/gi, "") // quita URLs
+        .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
-        .replace(/\b2245402689\b/g, "por WhatsApp");
+        .replace(/\b2245402689\b/g, "por WhatsApp")
+        .replace(/@/g, " arroba ")
+        .replace(/#/g, " numeral ")
+        .replace(/\+/g, " más ")
+        .replace(/\$/g, " pesos ")
+        .replace(/%/g, " por ciento ")
+        .replace(/&/g, " y ")
+        .replace(/(\d+)\.(\d{3})(?!\d)/g, "$1$2");
+
+      voiceText = reemplazaHorasEnTexto(voiceText);
 
       try {
-        const tts = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "xi-api-key": ELEVEN_API_KEY
-            },
-            body: JSON.stringify({
-              text: voiceText,
-              model_id: "eleven_multilingual_v2",
-              voice_settings: { stability: 0.7, similarity_boost: 0.9 }
-            })
-          }
-        );
-
+        const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": ELEVEN_API_KEY
+          },
+          body: JSON.stringify({
+            text: voiceText,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: { stability: 0.7, similarity_boost: 0.9 }
+          })
+        });
         if (tts.ok) {
           const buf = Buffer.from(await tts.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
         }
       } catch (e) {
-        // si falla la voz, devolvemos solo texto
         console.error("TTS error:", e);
       }
     }
 
-    // ---------- Respuesta ----------
     return res.status(200).json({ reply, audio: audioBase64 });
   } catch (err) {
     console.error("Chat API error:", err);
