@@ -228,13 +228,48 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
     // ---------- TTS con ElevenLabs ----------
     let audioBase64 = null;
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
-      // helpers horas
+      // --- Helpers para números ---
+      const unidades = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"];
+      const decenas = ["", "diez", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+      const especiales = {
+        11: "once", 12: "doce", 13: "trece", 14: "catorce", 15: "quince",
+        16: "dieciséis", 17: "diecisiete", 18: "dieciocho", 19: "diecinueve"
+      };
+      const centenas = ["", "cien", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos"];
+
+      function numeroATexto(n) {
+        n = parseInt(n, 10);
+        if (isNaN(n)) return n;
+
+        if (n === 10000) return "diez mil";
+        if (n === 11500) return "once mil quinientos";
+        if (n === 15000) return "quince mil";
+        if (n === 17000) return "diecisiete mil";
+        if (n === 20000) return "veinte mil";
+
+        if (n < 10) return unidades[n];
+        if (n < 20) return especiales[n] || "";
+        if (n < 100) {
+          const d = Math.floor(n / 10);
+          const u = n % 10;
+          return decenas[d] + (u ? " y " + unidades[u] : "");
+        }
+        if (n < 1000) {
+          const c = Math.floor(n / 100);
+          const resto = n % 100;
+          return centenas[c] + (resto ? " " + numeroATexto(resto) : "");
+        }
+        if (n < 1000000) {
+          const miles = Math.floor(n / 1000);
+          const resto = n % 1000;
+          return (miles === 1 ? "mil" : numeroATexto(miles) + " mil") + (resto ? " " + numeroATexto(resto) : "");
+        }
+        return n.toString();
+      }
+
+      // --- Helpers horas ---
       const horaEnPalabras = (h) => {
-        const mapa = {
-          1: "una", 2: "dos", 3: "tres", 4: "cuatro",
-          5: "cinco", 6: "seis", 7: "siete", 8: "ocho",
-          9: "nueve", 10: "diez", 11: "once", 12: "doce"
-        };
+        const mapa = {1:"una",2:"dos",3:"tres",4:"cuatro",5:"cinco",6:"seis",7:"siete",8:"ocho",9:"nueve",10:"diez",11:"once",12:"doce"};
         const h12 = h % 12 === 0 ? 12 : (h % 12);
         return mapa[h12] || `${h12}`;
       };
@@ -266,6 +301,7 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         return t;
       };
 
+      // --- Limpieza texto para TTS ---
       let voiceText = reply
         .replace(/\bhttps?:\/\/\S+/gi, "")
         .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp")
@@ -276,9 +312,12 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         .replace(/\+/g, " más ")
         .replace(/\$/g, " pesos ")
         .replace(/%/g, " por ciento ")
-        .replace(/&/g, " y ")
-        .replace(/(\d+)\.(\d{3})(?!\d)/g, "$1$2"); // "10.000" -> "10000"
+        .replace(/&/g, " y ");
 
+      // convertir números grandes a texto
+      voiceText = voiceText.replace(/\b\d{4,6}\b/g, (num) => numeroATexto(num));
+
+      // formatear horas
       voiceText = reemplazaHorasEnTexto(voiceText);
 
       try {
