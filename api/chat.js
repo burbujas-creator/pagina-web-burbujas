@@ -49,6 +49,11 @@ Enlaces:
 - En pantalla: mostrar solo texto amigable y clickeable en formato Markdown, por ejemplo: [WhatsApp](https://wa.me/5492245402689). Nunca mostrar HTML ni URL cruda.
 - En voz: no leer URLs; decir solo el texto amigable (“WhatsApp”, “Mercado Pago”, “burbujas.online”). Evitar redundancias.
 
+Pedidos y delivery:
+El bot TIENE PROHIBIDO agendar, confirmar o registrar pedidos directamente.  
+Cuando un cliente proporcione dirección, horario, o solicite retiro/envío, el bot DEBE responder que no puede agendar y que para coordinar debe escribirnos por [WhatsApp](https://wa.me/5492245402689).  
+En voz solo debe decir “WhatsApp”.
+
 Horarios: de 8 de la mañana a 9 de la noche (hora Argentina), lunes a sábado. Considerar el horario actual. Aclarar que esta conversación es con una IA y que en redes responde el equipo de Burbujas.
 
 Servicios:
@@ -69,7 +74,7 @@ Promos Cuenta DNI: 20% lun-vie tope 8.000. 30% mayores de 60 lun-vie tope 7.000.
 
 Otros:
 - Transferencias alias: burbujasdolores, ropa.limpia.siempre (titular Santiago Lencina).
-- Delivery sin cargo en área (15 min aprox). Pedir dirección y horario cómodo. Incentivar contacto por [WhatsApp](https://wa.me/5492245402689).
+- Delivery sin cargo en área (15 min aprox). Siempre derivar a [WhatsApp](https://wa.me/5492245402689).
 - Ropa lista en 5 horas. Acolchados: mismo día si ingresan temprano, si no al día siguiente.
 - Dirección: Alem 280, Dolores (Buenos Aires).
 - Proyecto en Parque Termal (no administrado por Burbujas). Info: [termasdolores.com.ar](https://www.termasdolores.com.ar).
@@ -120,17 +125,12 @@ Responde siempre breve, concreto, amistoso y con 2 emojis.
     // ---------- TTS con ElevenLabs ----------
     let audioBase64 = null;
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
-      // limpiar texto para voz
       let voiceText = reply
-        // links markdown -> solo texto
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-        // quitar URLs
-        .replace(/\bhttps?:\/\/\S+/gi, "")
-        // teléfonos -> WhatsApp
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // links markdown -> solo texto
+        .replace(/\bhttps?:\/\/\S+/gi, "")         // quitar URLs
         .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
         .replace(/\b2245402689\b/g, "por WhatsApp")
-        // símbolos
         .replace(/@/g, " arroba ")
         .replace(/#/g, " numeral ")
         .replace(/\+/g, " más ")
