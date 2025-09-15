@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     const reply = data.choices?.[0]?.message?.content || "Lo siento, no pude generar una respuesta.";
 
     // 2️⃣ Generar audio con ElevenLabs (voz rioplatense)
-    const voiceId = "EXAVITQu4vr4xnSDxMaL"; // ejemplo de voz (puede ser sustituida por otra de estilo rioplatense)
+    const voiceId = "EXAVITQu4vr4xnSDxMaL"; // podés cambiarlo por otra voz más natural
     const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: {
