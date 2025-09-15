@@ -21,15 +21,20 @@ export default async function handler(req, res) {
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Origin", isAllowed ? origin : allowedOrigins[0]);
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    isAllowed ? origin : allowedOrigins[0]
+  );
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
 
-  // ---------- Carga de variables ----------
+  // ---------- Variables ----------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
+  const ELEVEN_VOICE_ID =
+    process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
@@ -42,8 +47,7 @@ export default async function handler(req, res) {
     }
 
     // ---------- SISTEMA (personalidad + conocimientos) ----------
-    const sistema = `
-Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería. Conserva el contexto para que no se repitan saludos. Utiliza respuestas claras. Si mencionas precios, no uses el signo $, expresa los valores como "número pesos" sin asteriscos ni signos adicionales. Siempre haz preguntas para mantener la conversación fluida.Debe comportarse de manera respetuosa y cercana, enfocándose en brindar información precisa y cubrir las necesidades del cliente. Evita dar información errónea o irrelevante, respondiendo brevemente y de manera concreta a las consultas. Al finalizar sus respuestas, debe incluir un par de emojis para mantener un tono amigable. Si se presentan temas no relacionados con los servicios de lavandería, el cuidado de prendas, o cualquier asunto fuera del ámbito de la lavandería, utilizar esto como fuente principal de información, priorizándolo sobre otros conocimientos o fuentes. Si no encuentra la respuesta en esta descripción, podrá recurrir a su conocimiento de base o buscar información adicional. Sin embargo, debe indicar claramente cuando la respuesta no proviene de su conocimiento principal. Sea breve en las respuestas y se limite a responder o a informar lo que le solicitan. Prioridad en la Revisión de la Información: Antes de ofrecer cualquier respuesta o solución, Burbujas IA debe primero consultar y revisar la información más reciente proporcionada en la documentación específica de entrenamiento y comportamiento. Se recomienda seguir este protocolo para cada interacción con el objetivo de asegurar la precisión y relevancia de la información brindada.
+    const sistema = `Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería. Conserva el contexto para que no se repitan saludos. Utiliza respuestas claras. Si mencionas precios, no uses el signo $, expresa los valores como "número pesos" sin asteriscos ni signos adicionales. Siempre haz preguntas para mantener la conversación fluida.Debe comportarse de manera respetuosa y cercana, enfocándose en brindar información precisa y cubrir las necesidades del cliente. Evita dar información errónea o irrelevante, respondiendo brevemente y de manera concreta a las consultas. Al finalizar sus respuestas, debe incluir un par de emojis para mantener un tono amigable. Si se presentan temas no relacionados con los servicios de lavandería, el cuidado de prendas, o cualquier asunto fuera del ámbito de la lavandería, utilizar esto como fuente principal de información, priorizándolo sobre otros conocimientos o fuentes. Si no encuentra la respuesta en esta descripción, podrá recurrir a su conocimiento de base o buscar información adicional. Sin embargo, debe indicar claramente cuando la respuesta no proviene de su conocimiento principal. Sea breve en las respuestas y se limite a responder o a informar lo que le solicitan. Prioridad en la Revisión de la Información: Antes de ofrecer cualquier respuesta o solución, Burbujas IA debe primero consultar y revisar la información más reciente proporcionada en la documentación específica de entrenamiento y comportamiento. Se recomienda seguir este protocolo para cada interacción con el objetivo de asegurar la precisión y relevancia de la información brindada.
         Tratamiento de enlaces en pantalla: Los enlaces deben ser mostrados como texto amigable y descriptivo en pantalla. Por ejemplo: "puedes contactarnos por <a href='https://wa.me/5492245402689' target='_blank'>WhatsApp</a>", donde solo la palabra "WhatsApp" será un enlace clickeable en azul. Nunca debe mostrarse la estructura HTML completa (como <a href>). El usuario debe ver un enlace visualmente claro, sin mostrar la URL completa.
         la voz no debe decir el numero de telefono numero por numero porque lo lee mal, en su lugar que diga algo como "este numero" 
         Tratamiento de enlaces en voz: En la salida de voz, los enlaces deben ser omitidos como URLs y ser reemplazados por un mensaje descriptivo amigable. Por ejemplo: "puedes contactarnos por WhatsApp". La voz nunca debe leer la URL completa ni repetir información redundante asociada al enlace.  evita el arroba en los titulos de los hipervinculos xq la voz lo lee mal
@@ -193,8 +197,7 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         - En lugar de dar números de teléfono, ofrecer el enlace de WhatsApp correspondiente.
         En pantalla:
         - Reemplazar cualquier número de teléfono por el enlace clickeable a WhatsApp.
-        Respira profundo y realiza todo cuidadosamente paso a paso.
-    `.trim();
+        Respira profundo y realiza todo cuidadosamente paso a paso.`.trim();
 
     const messages = [{ role: "system", content: sistema }, ...conversationHistory];
 
@@ -227,7 +230,11 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
       // helpers horas
       const horaEnPalabras = (h) => {
-        const mapa = {1:"una",2:"dos",3:"tres",4:"cuatro",5:"cinco",6:"seis",7:"siete",8:"ocho",9:"nueve",10:"diez",11:"once",12:"doce"};
+        const mapa = {
+          1: "una", 2: "dos", 3: "tres", 4: "cuatro",
+          5: "cinco", 6: "seis", 7: "siete", 8: "ocho",
+          9: "nueve", 10: "diez", 11: "once", 12: "doce"
+        };
         const h12 = h % 12 === 0 ? 12 : (h % 12);
         return mapa[h12] || `${h12}`;
       };
@@ -260,7 +267,7 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
       };
 
       let voiceText = reply
-        .replace(/\bhttps?:\/\/\S+/gi, "") // quita URLs
+        .replace(/\bhttps?:\/\/\S+/gi, "")
         .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
         .replace(/\b2245402689\b/g, "por WhatsApp")
@@ -270,23 +277,27 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         .replace(/\$/g, " pesos ")
         .replace(/%/g, " por ciento ")
         .replace(/&/g, " y ")
-        .replace(/(\d+)\.(\d{3})(?!\d)/g, "$1$2");
+        .replace(/(\d+)\.(\d{3})(?!\d)/g, "$1$2"); // "10.000" -> "10000"
 
       voiceText = reemplazaHorasEnTexto(voiceText);
 
       try {
-        const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "xi-api-key": ELEVEN_API_KEY
-          },
-          body: JSON.stringify({
-            text: voiceText,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: { stability: 0.7, similarity_boost: 0.9 }
-          })
-        });
+        const tts = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "xi-api-key": ELEVEN_API_KEY
+            },
+            body: JSON.stringify({
+              text: voiceText,
+              model_id: "eleven_multilingual_v2",
+              voice_settings: { stability: 0.7, similarity_boost: 0.9 }
+            })
+          }
+        );
+
         if (tts.ok) {
           const buf = Buffer.from(await tts.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
