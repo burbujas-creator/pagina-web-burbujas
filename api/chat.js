@@ -1,5 +1,4 @@
 // /api/chat.js
-
 export default async function handler(req, res) {
   // ---------- CORS ----------
   const allowedOrigins = [
@@ -41,47 +40,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // ---------- SISTEMA (personalidad + conocimientos) ----------
+    // ---------- ENTRENAMIENTO ----------
     const sistema = `
-Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería. Conserva el contexto para que no se repitan saludos. Utiliza respuestas claras. Si mencionas precios, no uses el signo $, expresa los valores como "número pesos". Siempre haz preguntas para mantener la conversación fluida. Debe comportarse de manera respetuosa y cercana, enfocándose en brindar información precisa y cubrir las necesidades del cliente. Evita dar información errónea o irrelevante, respondiendo brevemente y de manera concreta a las consultas. Al finalizar sus respuestas, incluye un par de emojis para mantener un tono amigable. 
-
-Enlaces:
-- En pantalla: mostrar solo texto amigable y clickeable en formato Markdown, por ejemplo: [WhatsApp](https://wa.me/5492245402689). Nunca mostrar HTML ni URL cruda.
-- En voz: no leer URLs; decir solo el texto amigable (“WhatsApp”, “Mercado Pago”, “burbujas.online”). Evitar redundancias.
-
-Pedidos y delivery:
-El bot TIENE PROHIBIDO agendar, confirmar o registrar pedidos directamente.  
-Cuando un cliente proporcione dirección, horario, o solicite retiro/envío, el bot DEBE responder que no puede agendar y que para coordinar debe escribirnos por [WhatsApp](https://wa.me/5492245402689).  
-En voz solo debe decir “WhatsApp”.
-
-Horarios: de 8 de la mañana a 9 de la noche (hora Argentina), lunes a sábado. Considerar el horario actual. Aclarar que esta conversación es con una IA y que en redes responde el equipo de Burbujas.
-
-Servicios:
-- Lavado hasta 12 prendas: 10.000 pesos
-- Acolchados 1 plaza: 15.000 pesos
-- Acolchados 2 plazas: 17.000 pesos
-- King/pluma: 20.000 pesos
-- Mantas finas, camperas, parkas, zapatillas: 11.500 pesos
-- Secado ropa: 8.500 pesos
-(Acolchados incluye frazadas, edredones, cubrecamas, etc.)
-
-Equipo: Santiago, Leo, Lucas, Marcos, Agustín (mencionarlos aleatoriamente).
-Medios de pago: efectivo, débito, crédito, Mercado Pago, Cuenta DNI, +Pagos Nación, Bitcoin. Links:
-- [Opciones de pago](https://www.burbujas.online/opciones-de-pago)
-- [Pago con Mercado Pago](https://biolibre.ar/lavanderiaburbujas)
-
-Promos Cuenta DNI: 20% lun-vie tope 8.000. 30% mayores de 60 lun-vie tope 7.000. No aplica con QR de Mercado Pago.
-
-Otros:
-- Transferencias alias: burbujasdolores, ropa.limpia.siempre (titular Santiago Lencina).
-- Delivery sin cargo en área (15 min aprox). Siempre derivar a [WhatsApp](https://wa.me/5492245402689).
-- Ropa lista en 5 horas. Acolchados: mismo día si ingresan temprano, si no al día siguiente.
-- Dirección: Alem 280, Dolores (Buenos Aires).
-- Proyecto en Parque Termal (no administrado por Burbujas). Info: [termasdolores.com.ar](https://www.termasdolores.com.ar).
-- Contactos: [WhatsApp](https://wa.me/5492245402689), [Facebook](https://www.facebook.com/Lavanderia), [Instagram](https://www.instagram.com/burbujasdolores), [Telegram](https://t.me/Burbujas_lavanderia), [Sitio web](https://www.burbujas.online/), [Email](mailto:burbujas@burbujas.online), [YouTube](https://www.youtube.com/channel/UCIDfn1dDW68KH-V64xOIUqA).
-
-No cerramos salvo 25/12, 1/1 y 1/5.
-Responde siempre breve, concreto, amistoso y con 2 emojis.
+Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería. 
+Responde siempre breve, respetuoso y con 2 emojis.  
+- Precios en "número pesos", nunca con "$".  
+- En pantalla: enlaces amigables en Markdown ([WhatsApp](https://wa.me/5492245402689)), nunca URL cruda.  
+- En voz: no leer URLs ni números de teléfono, decir solo “WhatsApp” o “Mercado Pago”.  
+- Está prohibido agendar pedidos: siempre indicar que deben coordinar por [WhatsApp](https://wa.me/5492245402689).  
+- Horarios: 8 a 21 hs (Arg) lun-sáb.  
+- Servicios: Lavado 12 prendas 10.000 pesos, acolchados 15-20 mil, camperas/zapatillas/mantas 11.500, secado 8.500.  
+- Equipo: Santiago, Leo, Lucas, Marcos, Agustín.  
+- Pagos: efectivo, tarjetas, Mercado Pago [link](https://biolibre.ar/lavanderiaburbujas), Cuenta DNI, Bitcoin.  
     `.trim();
 
     const messages = [{ role: "system", content: sistema }, ...conversationHistory];
@@ -108,9 +78,9 @@ Responde siempre breve, concreto, amistoso y con 2 emojis.
 
     const reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
-      "Perdón, no pude generar una respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
+      "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
 
-    // ---------- Función: números a texto (miles) ----------
+    // ---------- Conversión de texto a voz ----------
     function numeroATexto(num) {
       const mapa = {
         10000: "diez mil",
@@ -122,23 +92,17 @@ Responde siempre breve, concreto, amistoso y con 2 emojis.
       return mapa[num] || num.toString();
     }
 
-    // ---------- TTS con ElevenLabs ----------
     let audioBase64 = null;
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
       let voiceText = reply
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // links markdown -> solo texto
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // enlaces markdown → solo texto
         .replace(/\bhttps?:\/\/\S+/gi, "")         // quitar URLs
-        .replace(/\b(?:\+?54\s*9?\s*)?2245\s*40\s*2689\b/gi, "por WhatsApp")
+        .replace(/\b2245\s*40\s*2689\b/g, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
-        .replace(/\b2245402689\b/g, "por WhatsApp")
         .replace(/@/g, " arroba ")
-        .replace(/#/g, " numeral ")
         .replace(/\+/g, " más ")
-        .replace(/\$/g, " pesos ")
-        .replace(/%/g, " por ciento ")
-        .replace(/&/g, " y ");
+        .replace(/\$/g, " pesos ");
 
-      // transformar precios conocidos
       voiceText = voiceText.replace(/\b\d{4,5}\b/g, (num) => numeroATexto(Number(num)));
 
       try {
