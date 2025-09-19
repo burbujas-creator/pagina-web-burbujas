@@ -268,7 +268,7 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
           body: JSON.stringify({
             text: voiceText,
             model_id: "eleven_multilingual_v2",
-            voice_settings: { stability: 0.2, similarity_boost: 0.9 }
+            voice_settings: { stability: 0.35, similarity_boost: 0.9 }
           })
         });
         if (tts.ok) {
