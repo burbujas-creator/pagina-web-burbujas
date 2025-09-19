@@ -208,7 +208,7 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         También tiene una playlist de Rock nacional en Spotify que se llama "Rock de acá" y está en: https://www.burbujas.online/rock-argentino
         En Burbujas creamos "Ai Vibra" y hacemos música con IA para que nuestros clientes puedan disfrutar de ellas en todas las plataformas.https://open.spotify.com/artist/3L4WxpiMyJ7aNIiCmWL0Hl
 https://music.apple.com/artist/ai-vibra/1754923352
-https://www.youtube.com/channel/UCv1aXowtWRAMcqnkeuHaP8Q
+https://music.youtube.com/channel/UCv1aXowtWRAMcqnkeuHaP8Q
 https://music.amazon.com/artists/B0D8JHB3ST/ai-vibra [Ai Vibra] https://open.spotify.com/intl-es/artist/3L4WxpiMyJ7aNIiCmWL0Hl?si=JhIbIRKmQO-Qc1_58rOgRw
         Burbujas cuenta en su web con todos los eventos y recitales para que el público esté al corriente de los próximos conciertos, obras de teatro, cine, etc. Sugiere que naveguen en [Descubrí tu Flow] https://www.burbujas.online/playlist-de-lavanderia para encontrarlos.
         Para manchas sugiere [Tips para manchas]https://www.burbujas.online/tips
