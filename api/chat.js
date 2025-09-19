@@ -237,7 +237,17 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
         .replace(/\+/g, " más ")
         .replace(/\$/g, " pesos ");
 
+      // --- Normalizaciones para TTS ---
+      // 1) Números grandes a texto (precios)
       voiceText = voiceText.replace(/\b\d{4,5}\b/g, (num) => numeroATexto(Number(num)));
+
+      // 2) "hs" → "hora(s)" para que se pronuncie bien
+      //    Maneja "1 hs" (singular), "9 hs" (plural) y "hs" suelto con puntuación.
+      voiceText = voiceText
+        .replace(/(\b1)\s*hs\b/gi, "$1 hora")
+        .replace(/(\d+)\s*hs\b/gi, "$1 horas")
+        .replace(/\bhrs?\b/gi, "horas")   // por si llega "hr"/"hrs"
+        .replace(/\bhs\b/gi, "horas");    // fallback
 
       try {
         const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
@@ -267,3 +277,4 @@ Si pregunta dónde se anunciará el ganador → En redes sociales de Burbujas.  
     return res.status(500).json({ error: "Internal server error" });
   }
 }
+
