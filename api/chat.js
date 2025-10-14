@@ -311,7 +311,7 @@ https://www.deezer.com/es/artist/271888052
           body: JSON.stringify({
             text: voiceText,
             model_id: "eleven_multilingual_v2",
-            voice_settings: { stability: 0.4, similarity_boost: 0.9 }
+            voice_settings: { stability: 0.6, similarity_boost: 0.9 }
           })
         });
         if (tts.ok) {
