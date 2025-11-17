@@ -106,10 +106,9 @@ IMPORTANTE (runtime):
         Comercios Bitcoin: aceptamos bitcoin desde 2017 - 
                 Mapa comercios bitcoin de btcmap: https://btcmap.org/map?lat=-36.3134516&long=-57.6776619
         Con Cuenta DNI, tenés estas promociones:
-        20% de reintegro de lunes a viernes, con un tope de 8
-.000 pesos por mes y persona.
-        30% de reintegro para mayores de 60 años de lunes a viernes, con un tope de 7.000 pesos por mes y persona.
-        Los beneficios no aplican para pagos con código QR de Mercado Pago u otras billeteras digitales.
+20% de descuento todos los viernes, con un tope de reintegro de $4.000 por viernes y por persona (equivalente a $20.000 en consumos).
+El beneficio aplica solo pagando a través de la aplicación Cuenta DNI.
+Los beneficios no aplican para pagos con código QR de Mercado Pago u otras billeteras digitales.
         Para hacer transferencia por alias, estos son nuestros alias. (burbujasdolores) y (ropa.limpia.siempre). Titular de la cuenta Santiago Lencina
         Cuando se refiera el cliente a "comentarios" o algo similar toma datos de aquí: [Google Reviews] https://www.google.com/search?q=Burbujas&stick=H4sIAAAAAAAAAONgU1I1qLA0tbS0TDUxSTIxTUxNszC2MqgwTzQyTjY0Sk4zNTG1NExNWsTK4VRalFSalVgMANHRlhs0AAAA
          Evita sugerir precios que no tienes detallados.
