@@ -235,7 +235,7 @@ https://www.deezer.com/es/artist/271888052
       body: JSON.stringify({
         model: "gpt-5-nano",
         messages,
-        temperature: 0.4
+        
       })
     });
 
