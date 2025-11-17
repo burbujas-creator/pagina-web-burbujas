@@ -233,7 +233,7 @@ https://www.deezer.com/es/artist/271888052
         Authorization: `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-5-nano",
         messages,
         temperature: 0.4
       })
