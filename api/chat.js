@@ -2,36 +2,43 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
-  // ---------- CORS ----------
-  const allowedOrigins = [
-    "https://burbujas.online",
-    "https://www.burbujas.online"
-  ];
+  // ---------- CORS SENCILLO Y SEGURO ----------
   const origin = req.headers.origin || "";
-  const isAllowed =
-    allowedOrigins.includes(origin) ||
-    (() => {
-      try {
-        const host = new URL(origin).hostname || "";
-        return host.endsWith("hostinger.com");
-      } catch {
-        return false;
-      }
-    })();
+
+  const allowedOrigins = new Set([
+    "https://burbujas.online",
+    "https://www.burbujas.online",
+    "https://pagina-web-burbujas.vercel.app"
+  ]);
+
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else if (!origin) {
+    // llamadas sin origin (por ejemplo, herramientas internas)
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else {
+    // si viene de otro dominio, no bloqueamos pero tampoco exponemos nada raro
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
 
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader(
-    "Access-Control-Allow-Origin",
-    isAllowed ? origin : allowedOrigins[0]
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
   );
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST")
-    return res.status(405).json({ error: "Method not allowed" });
+  // Preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
-  // ---------- Variables ----------
+  // Solo aceptamos POST para el chat
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // ---------- VARIABLES DE ENTORNO ----------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
   const ELEVEN_VOICE_ID =
@@ -43,11 +50,16 @@ export default async function handler(req, res) {
 
   try {
     const { conversationHistory } = req.body || {};
+
     if (!Array.isArray(conversationHistory)) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // ---------- Estado "abierto/cerrado" según hora local de Buenos Aires ----------
+    // ---------- LIMITAR HISTORIAL PARA IR MÁS RÁPIDO ----------
+    // Usamos solo los últimos 8 mensajes para que la llamada a OpenAI sea liviana
+    const trimmedHistory = conversationHistory.slice(-8);
+
+    // ---------- ESTADO "ABIERTO/CERRADO" SEGÚN HORA LOCAL DE BUENOS AIRES ----------
     function estadoLocalAhora() {
       const ahora = new Date();
       const opciones = {
@@ -57,10 +69,11 @@ export default async function handler(req, res) {
         weekday: "long",
         hour12: false
       };
-      const partes = new Intl.DateTimeFormat(
-        "es-AR",
-        opciones
-      ).formatToParts(ahora);
+
+      const partes = new Intl.DateTimeFormat("es-AR", opciones).formatToParts(
+        ahora
+      );
+
       const hora = parseInt(partes.find(p => p.type === "hour").value, 10);
       const minuto = parseInt(partes.find(p => p.type === "minute").value, 10);
       const diaRaw = partes.find(p => p.type === "weekday").value.toLowerCase();
@@ -76,13 +89,16 @@ export default async function handler(req, res) {
         "viernes",
         "sabado"
       ].includes(dia);
+
       const dentroHorario =
         (hora > 8 && hora < 21) || (hora === 8 && minuto >= 0);
+
       return habil && dentroHorario ? "abierto" : "cerrado";
     }
+
     const estadoAhora = estadoLocalAhora();
 
-    // ---------- ENTRENAMIENTO ----------
+    // ---------- ENTRENAMIENTO (TU VERSIÓN DE AYER) ----------
     const sistema = `
 Este GPT, llamado Burbujas IA, está especializado en atención al cliente para una lavandería.  
 Responde por defecto en español argentino, pero si el usuario escribe en otro idioma, respondé en ese mismo idioma. Responde siempre breve, respetuoso y con 2 emojis.  
@@ -110,8 +126,7 @@ IMPORTANTE (runtime):
         No hacemos planchado. (pero lo incorporaremos próximamente)
         Servicios:
         Lavado incluye hasta 12 prendas 10.000 pesos.- 
-        Lavado acolchados de 1 plazas 15.000 pesos.-`
-      .concat(`
+        Lavado acolchados de 1 plazas 15.000 pesos.-
         Lavado acolchados de 2 plazas 17.000 pesos.-
         Acolchados king o pluma 20.000 pesos.-
         Lavado mantas finas 11.500 pesos.-
@@ -240,11 +255,12 @@ https://www.deezer.com/es/artist/271888052
         - Si el día del mes es 1, decir "primero de <mes>" en lugar de "uno de <mes>".
 
         Respira profundo y realiza todo cuidadosamente paso a paso)
-`).trim();
 
-    const messages = [{ role: "system", content: sistema }, ...conversationHistory];
+`.trim();
 
-    // ---------- Llamada a OpenAI ----------
+    const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
+
+    // ---------- LLAMADA A OPENAI ----------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -259,24 +275,25 @@ https://www.deezer.com/es/artist/271888052
     });
 
     const openaiData = await openaiRes.json();
+
     if (!openaiRes.ok || openaiData?.error) {
       const msg = openaiData?.error?.message || "OpenAI error";
       return res.status(500).json({ error: msg });
     }
 
-    // ---------- Post-proceso de texto ----------
+    // ---------- POST-PROCESO DEL TEXTO ----------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
 
-    // Quitar "(Arg)" y frases redundantes
+    // limpiar cositas molestas
     reply = reply
       .replace(/\s*\(arg\)\s*/gi, " ")
       .replace(/seg[uú]n\s+horario\s+de\s+argentina/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // ---------- Conversión de texto a voz ----------
+    // ---------- MAPA DE NÚMEROS A TEXTO PARA TTS ----------
     function numeroATexto(num) {
       const mapa = {
         5000: "cinco mil",
@@ -292,19 +309,24 @@ https://www.deezer.com/es/artist/271888052
       return mapa[num] || num.toString();
     }
 
+    // ---------- CONVERSIÓN DE TEXTO A VOZ (ELEVENLABS) ----------
     let audioBase64 = null;
-    if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
+
+    if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
       let voiceText = reply
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // enlaces → solo texto
-        .replace(/\bhttps?:\/\/\S+/gi, "") // quitar URLs
+        // enlaces Markdown → solo el texto
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+        // quitar URLs sueltas
+        .replace(/\bhttps?:\/\/\S+/gi, "")
+        // teléfonos → "por WhatsApp"
         .replace(/\b2245\s*40\s*2689\b/g, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
+        // símbolos
         .replace(/@/g, " arroba ")
         .replace(/\+/g, " más ")
         .replace(/\$/g, " pesos ")
-        .replace(/\(arg\)/gi, ""); // no pronunciar "(Arg)"
+        .replace(/\(arg\)/gi, "");
 
-      // --- Normalizaciones ---
       // 1) Números grandes → texto
       voiceText = voiceText.replace(/\b\d{4,5}\b/g, num =>
         numeroATexto(Number(num))
@@ -317,7 +339,7 @@ https://www.deezer.com/es/artist/271888052
         .replace(/\bhrs?\b/gi, "horas")
         .replace(/\bhs\b/gi, "horas");
 
-      // 3) "lunes a sábados" → normalizar sin duplicar "de"
+      // 3) "lunes a sábados" variantes
       voiceText = voiceText
         .replace(
           /\blun(?:es)?\s*[-–—]\s*s[áa]b(?:ado|ados)?\b/gi,
@@ -327,6 +349,11 @@ https://www.deezer.com/es/artist/271888052
           /\blun(?:es)?\s*a\s*s[áa]b(?:ado|ados)?\b/gi,
           "lunes a sábados"
         );
+
+      // 4) Limitar longitud de texto para que el TTS sea más rápido
+      if (voiceText.length > 900) {
+        voiceText = voiceText.slice(0, 900);
+      }
 
       try {
         const tts = await fetch(
@@ -340,10 +367,14 @@ https://www.deezer.com/es/artist/271888052
             body: JSON.stringify({
               text: voiceText,
               model_id: "eleven_multilingual_v2",
-              voice_settings: { stability: 0.6, similarity_boost: 0.9 }
+              voice_settings: {
+                stability: 0.6,
+                similarity_boost: 0.9
+              }
             })
           }
         );
+
         if (tts.ok) {
           const buf = Buffer.from(await tts.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
