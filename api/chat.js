@@ -1,33 +1,43 @@
 // /api/chat.js
 export default async function handler(req, res) {
-  // ---------- CORS ----------
+  // ---------- CORS SENCILLO Y SEGURO ----------
+  const origin = req.headers.origin || "";
+
   const allowedOrigins = new Set([
     "https://burbujas.online",
     "https://www.burbujas.online",
     "https://pagina-web-burbujas.vercel.app"
   ]);
 
-  const origin = req.headers.origin || "";
-
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+  } else if (!origin) {
+    // llamadas sin origin (por ejemplo, herramientas internas)
+    res.setHeader("Access-Control-Allow-Origin", "*");
   } else {
-    // fallback seguro (por si alguna herramienta llama sin origin)
-    res.setHeader("Access-Control-Allow-Origin", "https://burbujas.online");
+    // si viene de otro dominio, NO exponemos nada sensible, pero
+    // dejamos * para evitar errores de CORS molestos
+    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
 
+  // Preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+
+  // Solo aceptamos POST para el chat
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // ---------- Variables ----------
+  // ---------- VARIABLES DE ENTORNO ----------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
   const ELEVEN_VOICE_ID =
@@ -39,13 +49,12 @@ export default async function handler(req, res) {
 
   try {
     const { conversationHistory } = req.body || {};
+
     if (!Array.isArray(conversationHistory)) {
-      return res
-        .status(400)
-        .json({ error: "Missing conversationHistory" });
+      return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // ---------- Estado "abierto/cerrado" según hora local de Buenos Aires ----------
+    // ---------- ESTADO "ABIERTO/CERRADO" SEGÚN HORA LOCAL DE BUENOS AIRES ----------
     function estadoLocalAhora() {
       const ahora = new Date();
       const opciones = {
@@ -55,21 +64,14 @@ export default async function handler(req, res) {
         weekday: "long",
         hour12: false
       };
-      const partes = new Intl.DateTimeFormat(
-        "es-AR",
-        opciones
-      ).formatToParts(ahora);
-      const hora = parseInt(
-        partes.find(p => p.type === "hour").value,
-        10
+
+      const partes = new Intl.DateTimeFormat("es-AR", opciones).formatToParts(
+        ahora
       );
-      const minuto = parseInt(
-        partes.find(p => p.type === "minute").value,
-        10
-      );
-      const diaRaw = partes
-        .find(p => p.type === "weekday")
-        .value.toLowerCase();
+
+      const hora = parseInt(partes.find(p => p.type === "hour").value, 10);
+      const minuto = parseInt(partes.find(p => p.type === "minute").value, 10);
+      const diaRaw = partes.find(p => p.type === "weekday").value.toLowerCase();
       const dia = diaRaw
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, ""); // quitar acentos
@@ -82,13 +84,16 @@ export default async function handler(req, res) {
         "viernes",
         "sabado"
       ].includes(dia);
+
       const dentroHorario =
         (hora > 8 && hora < 21) || (hora === 8 && minuto >= 0);
+
       return habil && dentroHorario ? "abierto" : "cerrado";
     }
+
     const estadoAhora = estadoLocalAhora();
 
-    // ---------- ENTRENAMIENTO ----------
+    // ---------- ENTRENAMIENTO DEL ASISTENTE ----------
     const sistema = `
 Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en Dolores, Provincia de Buenos Aires, Argentina.
 
@@ -355,42 +360,40 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
 
     const messages = [{ role: "system", content: sistema }, ...conversationHistory];
 
-    // ---------- Llamada a OpenAI ----------
-    const openaiRes = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages,
-          temperature: 0.4
-        })
-      }
-    );
+    // ---------- LLAMADA A OPENAI ----------
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages,
+        temperature: 0.4
+      })
+    });
 
     const openaiData = await openaiRes.json();
+
     if (!openaiRes.ok || openaiData?.error) {
       const msg = openaiData?.error?.message || "OpenAI error";
       return res.status(500).json({ error: msg });
     }
 
-    // ---------- Post-proceso de texto ----------
+    // ---------- POST-PROCESO DEL TEXTO ----------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
 
-    // Quitar "(Arg)" y frases redundantes
+    // limpiar cositas molestas
     reply = reply
       .replace(/\s*\(arg\)\s*/gi, " ")
       .replace(/seg[uú]n\s+horario\s+de\s+argentina/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // ---------- Conversión de texto a voz ----------
+    // ---------- MAPA DE NÚMEROS A TEXTO PARA TTS ----------
     function numeroATexto(num) {
       const mapa = {
         5000: "cinco mil",
@@ -406,19 +409,24 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
       return mapa[num] || num.toString();
     }
 
+    // ---------- CONVERSIÓN DE TEXTO A VOZ (ELEVENLABS) ----------
     let audioBase64 = null;
+
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
       let voiceText = reply
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // enlaces → solo texto
-        .replace(/\bhttps?:\/\/\S+/gi, "") // quitar URLs
+        // enlaces Markdown → solo el texto
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+        // quitar URLs sueltas
+        .replace(/\bhttps?:\/\/\S+/gi, "")
+        // teléfonos → "por WhatsApp"
         .replace(/\b2245\s*40\s*2689\b/g, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
+        // símbolos
         .replace(/@/g, " arroba ")
         .replace(/\+/g, " más ")
         .replace(/\$/g, " pesos ")
-        .replace(/\(arg\)/gi, ""); // no pronunciar "(Arg)"
+        .replace(/\(arg\)/gi, "");
 
-      // --- Normalizaciones ---
       // 1) Números grandes → texto
       voiceText = voiceText.replace(/\b\d{4,5}\b/g, num =>
         numeroATexto(Number(num))
@@ -431,7 +439,7 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
         .replace(/\bhrs?\b/gi, "horas")
         .replace(/\bhs\b/gi, "horas");
 
-      // 3) "lunes a sábados" → normalizar sin duplicar "de"
+      // 3) "lunes a sábados" variantes
       voiceText = voiceText
         .replace(
           /\blun(?:es)?\s*[-–—]\s*s[áa]b(?:ado|ados)?\b/gi,
@@ -461,6 +469,7 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
             })
           }
         );
+
         if (tts.ok) {
           const buf = Buffer.from(await tts.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
