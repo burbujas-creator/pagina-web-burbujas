@@ -1,5 +1,8 @@
 // /api/chat.js
-import fetch from "node-fetch";
+
+// IMPORTANTE: este archivo NO usa "import fetch from 'node-fetch'"
+// porque en Vercel (Node 18+) ya existe fetch nativo.
+
 export default async function handler(req, res) {
   // ---------- CORS SENCILLO Y SEGURO ----------
   const origin = req.headers.origin || "";
@@ -45,6 +48,7 @@ export default async function handler(req, res) {
     process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
 
   if (!OPENAI_API_KEY) {
+    console.error("Falta OPENAI_API_KEY en variables de entorno");
     return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
   }
 
@@ -379,6 +383,7 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
 
     if (!openaiRes.ok || openaiData?.error) {
       const msg = openaiData?.error?.message || "OpenAI error";
+      console.error("Error OpenAI:", msg);
       return res.status(500).json({ error: msg });
     }
 
@@ -452,7 +457,7 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
         );
 
       try {
-        const tts = await fetch(
+        const ttsRes = await fetch(
           `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`,
           {
             method: "POST",
@@ -471,9 +476,11 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
           }
         );
 
-        if (tts.ok) {
-          const buf = Buffer.from(await tts.arrayBuffer());
+        if (ttsRes.ok) {
+          const buf = Buffer.from(await ttsRes.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
+        } else {
+          console.error("TTS status:", ttsRes.status);
         }
       } catch (e) {
         console.error("TTS error:", e);
