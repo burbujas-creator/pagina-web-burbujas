@@ -1,34 +1,37 @@
 // /api/chat.js
 export default async function handler(req, res) {
   // ---------- CORS ----------
-  const allowedOrigins = [
+  const allowedOrigins = new Set([
     "https://burbujas.online",
-    "https://www.burbujas.online"
-  ];
+    "https://www.burbujas.online",
+    "https://pagina-web-burbujas.vercel.app"
+  ]);
+
   const origin = req.headers.origin || "";
-  const isAllowed =
-    allowedOrigins.includes(origin) ||
-    (() => {
-      try {
-        const host = new URL(origin).hostname || "";
-        return host.endsWith("hostinger.com");
-      } catch {
-        return false;
-      }
-    })();
+
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // fallback seguro (por si alguna herramienta llama sin origin)
+    res.setHeader("Access-Control-Allow-Origin", "https://burbujas.online");
+  }
 
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Origin", isAllowed ? origin : allowedOrigins[0]);
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   // ---------- Variables ----------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
+  const ELEVEN_VOICE_ID =
+    process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
@@ -37,7 +40,9 @@ export default async function handler(req, res) {
   try {
     const { conversationHistory } = req.body || {};
     if (!Array.isArray(conversationHistory)) {
-      return res.status(400).json({ error: "Missing conversationHistory" });
+      return res
+        .status(400)
+        .json({ error: "Missing conversationHistory" });
     }
 
     // ---------- Estado "abierto/cerrado" según hora local de Buenos Aires ----------
@@ -50,15 +55,36 @@ export default async function handler(req, res) {
         weekday: "long",
         hour12: false
       };
-      const partes = new Intl.DateTimeFormat("es-AR", opciones).formatToParts(ahora);
-      const hora = parseInt(partes.find(p => p.type === "hour").value, 10);
-      const minuto = parseInt(partes.find(p => p.type === "minute").value, 10);
-      const diaRaw = partes.find(p => p.type === "weekday").value.toLowerCase();
-      const dia = diaRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // quitar acentos
+      const partes = new Intl.DateTimeFormat(
+        "es-AR",
+        opciones
+      ).formatToParts(ahora);
+      const hora = parseInt(
+        partes.find(p => p.type === "hour").value,
+        10
+      );
+      const minuto = parseInt(
+        partes.find(p => p.type === "minute").value,
+        10
+      );
+      const diaRaw = partes
+        .find(p => p.type === "weekday")
+        .value.toLowerCase();
+      const dia = diaRaw
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""); // quitar acentos
 
-      const habil = ["lunes","martes","miercoles","jueves","viernes","sabado"].includes(dia);
-      const dentroHorario = (hora > 8 && hora < 21) || (hora === 8 && minuto >= 0);
-      return (habil && dentroHorario) ? "abierto" : "cerrado";
+      const habil = [
+        "lunes",
+        "martes",
+        "miercoles",
+        "jueves",
+        "viernes",
+        "sabado"
+      ].includes(dia);
+      const dentroHorario =
+        (hora > 8 && hora < 21) || (hora === 8 && minuto >= 0);
+      return habil && dentroHorario ? "abierto" : "cerrado";
     }
     const estadoAhora = estadoLocalAhora();
 
@@ -325,25 +351,26 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
   - Incluyendo **exactamente 2 emojis** por respuesta (evitar repetir siempre los mismos).
 - Referirse a Burbujas siempre en primera persona del plural:
   - “nosotros”, “somos”, “estamos”, “abrimos”, “cerramos”, “te ofrecemos”, etc.
-
-
 `.trim();
 
     const messages = [{ role: "system", content: sistema }, ...conversationHistory];
 
     // ---------- Llamada a OpenAI ----------
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-    temperature: 0.4 
-      })
-    });
+    const openaiRes = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages,
+          temperature: 0.4
+        })
+      }
+    );
 
     const openaiData = await openaiRes.json();
     if (!openaiRes.ok || openaiData?.error) {
@@ -383,17 +410,19 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
       let voiceText = reply
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") // enlaces → solo texto
-        .replace(/\bhttps?:\/\/\S+/gi, "")         // quitar URLs
+        .replace(/\bhttps?:\/\/\S+/gi, "") // quitar URLs
         .replace(/\b2245\s*40\s*2689\b/g, "por WhatsApp")
         .replace(/\b5492245402689\b/g, "por WhatsApp")
         .replace(/@/g, " arroba ")
         .replace(/\+/g, " más ")
         .replace(/\$/g, " pesos ")
-        .replace(/\(arg\)/gi, "");                 // no pronunciar "(Arg)"
+        .replace(/\(arg\)/gi, ""); // no pronunciar "(Arg)"
 
       // --- Normalizaciones ---
       // 1) Números grandes → texto
-      voiceText = voiceText.replace(/\b\d{4,5}\b/g, (num) => numeroATexto(Number(num)));
+      voiceText = voiceText.replace(/\b\d{4,5}\b/g, num =>
+        numeroATexto(Number(num))
+      );
 
       // 2) "hs" → "hora(s)"
       voiceText = voiceText
@@ -404,22 +433,34 @@ Eres "Burbujas IA", experto en atención al cliente de Lavandería Burbujas en D
 
       // 3) "lunes a sábados" → normalizar sin duplicar "de"
       voiceText = voiceText
-        .replace(/\blun(?:es)?\s*[-–—]\s*s[áa]b(?:ado|ados)?\b/gi, "lunes a sábados")
-        .replace(/\blun(?:es)?\s*a\s*s[áa]b(?:ado|ados)?\b/gi, "lunes a sábados");
+        .replace(
+          /\blun(?:es)?\s*[-–—]\s*s[áa]b(?:ado|ados)?\b/gi,
+          "lunes a sábados"
+        )
+        .replace(
+          /\blun(?:es)?\s*a\s*s[áa]b(?:ado|ados)?\b/gi,
+          "lunes a sábados"
+        );
 
       try {
-        const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "xi-api-key": ELEVEN_API_KEY
-          },
-          body: JSON.stringify({
-            text: voiceText,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: { stability: 0.6, similarity_boost: 0.9 }
-          })
-        });
+        const tts = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "xi-api-key": ELEVEN_API_KEY
+            },
+            body: JSON.stringify({
+              text: voiceText,
+              model_id: "eleven_multilingual_v2",
+              voice_settings: {
+                stability: 0.6,
+                similarity_boost: 0.9
+              }
+            })
+          }
+        );
         if (tts.ok) {
           const buf = Buffer.from(await tts.arrayBuffer());
           audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
