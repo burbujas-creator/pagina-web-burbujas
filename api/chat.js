@@ -1,4 +1,5 @@
 // /api/chat.js
+import fetch from "node-fetch";
 export default async function handler(req, res) {
   // ---------- CORS SENCILLO Y SEGURO ----------
   const origin = req.headers.origin || "";
