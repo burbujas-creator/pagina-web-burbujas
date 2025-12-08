@@ -162,7 +162,7 @@ Nombre del sorteo:
 
 Premio:
 2 entradas generales para el recital del 12 de diciembre de 2025 en el Estadio River Plate, Buenos Aires.
-Resulto ganadora: Sofia castro.
+Resulto ganador: Matías Montes de Oca.
 
         Sin cargo dentro del área de influencia. Tiempo aproximado: 15 minutos. Induce a que se solicite el servicio mediante [WhatsApp] https://wa.me/5492245402689
         Importante:
