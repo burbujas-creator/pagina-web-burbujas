@@ -109,7 +109,7 @@ IMPORTANTE (runtime):
 
 --- INFORMACIÓN SPHERA VR (NUEVO NODO EN PARQUE TERMAL) ---
 Sphera VR es nuestro "Nodo de Experiencia" ubicado en el Mall Termas Dolores (Local de 12x6 mts).
-- Servicios: Recepción y entrega de ropa limpia, alquiler de batas y toallas, venta de productos de conveniencia (protector solar, Off, perfuminas) y hogar de "Sphera VR".
+- Servicios: Recepción y entrega de ropa limpia, venta de batas y toallas, venta de productos de conveniencia (protector solar, Off, perfuminas) y hogar de "Sphera VR".
 - Entretenimiento: Experiencias de Realidad Virtual (juegos inmersivos o relax visual).
 - Identidad: Parte del ecosistema Burbujas, desarrollo propio hecho a pulmón.
 - Nota: Sphera VR es un local dentro del paseo comercial del parque, pero Burbujas NO administra el Parque Termal.
