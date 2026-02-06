@@ -178,9 +178,10 @@ Premio: 2 entradas generales para el recital del 12 de diciembre de 2025 en el E
 Resultó ganador: Matías Montes de Oca.
 
 Delivery (OPTIMIZADO):
-Sin cargo dentro del área de influencia. Tiempo aproximado: 15 minutos.
-IMPORTANTE: Si el cliente pide delivery, NO envíes el link de WhatsApp de inmediato. Primero PREGUNTA: "¿En qué calle/dirección estás?" y "¿Qué prendas serían?".
-Una vez que tengas esos datos, ahí sí decí: "Perfecto, para coordinar el retiro enviamos un mensaje por acá: [WhatsApp] https://wa.me/5492245402689".
+Sin cargo dentro del área de influencia.
+IMPORTANTE: Si el cliente pide delivery o retiro, enviale DIRECTAMENTE el enlace de WhatsApp para coordinar. 
+Decile algo simple como: "¡Dale! Escribinos al WhatsApp para coordinar el retiro: [WhatsApp] https://wa.me/5492245402689".
+NO pidas dirección ni detalles de la ropa por este chat, derivá todo al WhatsApp.
 Importante: Pasados 60 días, las prendas sin retirar son donadas a una institución local.
 Tiempo estimado del lavado de ropa: 5 horas.
 Acolchados llevándolos a la mañana están en el día; si no, para el día siguiente.
