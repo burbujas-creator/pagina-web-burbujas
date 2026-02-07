@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     // Usamos solo los últimos 8 mensajes para que la llamada a OpenAI sea liviana
     const trimmedHistory = conversationHistory.slice(-8);
 
-    // ---------- ESTADO "ABIERTO/CERRADO" SEGÚN HORA LOCAL DE BUENOS AIRES ----------
+    // ---------- 1. ESTADO "ABIERTO/CERRADO" SEGÚN HORA LOCAL DE BUENOS AIRES ----------
     function estadoLocalAhora() {
       const ahora = new Date();
       const opciones = {
@@ -97,22 +97,53 @@ export default async function handler(req, res) {
 
     const estadoAhora = estadoLocalAhora();
 
-    // ---------- ENTRENAMIENTO (COMPLETO + SPHERA + PERSONALIDAD) ----------
+    // ---------- 2. CONTEXTO DE FIESTAS DOLORENSES (NUEVO) ----------
+    function obtenerContextoDolorense() {
+        const ahora = new Date();
+        const fechaAR = new Date(ahora.toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+        const mes = fechaAR.getMonth() + 1; // Enero es 0
+        const dia = fechaAR.getDate();
+        
+        let fiesta = "";
+
+        // FEBRERO: Carnaval del Sol
+        if (mes === 2) {
+            fiesta = "CONTEXTO TEMPORAL: Estamos en época del CARNAVAL DEL SOL. La ciudad festeja en el Corsódromo Antu Kawin (comparsas: Sheg Yenú, Sayen, Kuyén). Recordá que somos expertos sacando manchas de nieve, espuma y tierra del carnaval.";
+        }
+        // MARZO: Fiesta Nacional de la Guitarra (aprox primera quincena)
+        else if (mes === 3 && dia <= 15) {
+            fiesta = "CONTEXTO TEMPORAL: Estamos en la FIESTA NACIONAL DE LA GUITARRA. Homenaje a Abel Fleury. Época de jineteada, desfiles y folklore. Lavamos mucha ropa de peña y bombachas de campo.";
+        }
+        // MAYO: Torta Argentina (Semana del 25)
+        else if (mes === 5 && dia >= 20 && dia <= 28) {
+            fiesta = "CONTEXTO TEMPORAL: Se celebra la FIESTA DE LA TORTA ARGENTINA (25 de Mayo) en Plaza Castelli. Receta histórica de Mulhall/Teitelman. Especial cuidado con manchas de chocolate caliente.";
+        }
+        // AGOSTO: Aniversario (Semana del 21)
+        else if (mes === 8 && dia >= 15 && dia <= 25) {
+            fiesta = "CONTEXTO TEMPORAL: Semana del ANIVERSARIO DE DOLORES (21 de Agosto). Primer Pueblo Patrio. Orgullo dolorense.";
+        }
+        
+        return fiesta;
+    }
+    const eventoHoy = obtenerContextoDolorense();
+
+    // ---------- 3. ENTRENAMIENTO (COMPLETO + SPHERA + PERSONALIDAD) ----------
     const sistema = `
 Sos "Burbujas IA", la identidad digital de la lavandería Burbujas en Dolores. 
 Tu misión es ayudar a los vecinos con la misma buena onda que si estuvieran en el local de Alem 280.
 
 REGLAS DE ORO PARA SONAR NATURAL (NO ROBOT):
 1. PERSONALIDAD: Hablá como un dolorense. Usá el "voseo" (vení, traé, fijate, sabés). 
-2. MENOS ROBOT, MÁS VECINO: Si alguien pregunta por una mancha, no des una lista técnica de manual. Decí: "Mirá, para eso lo mejor es..." o "Haceme caso, tirale un poquito de sal...".
+2. CERO LISTAS: Está PROHIBIDO responder usando listas, viñetas (bullets) o guiones. Escribe siempre en párrafos fluidos, conversacionales y naturales. Habla como un vecino, no como un folleto.
 3. BREVEDAD: No des vueltas. Respuestas cortas, al grano y con dos emojis máximo.
 4. LOCALÍA: Sabés que estamos en Alem y en el Mall de las Termas. Somos "nosotros", un equipo de acá.
-5. IDIOMA: Si te hablan en inglés u otro idioma, respondé en ese idioma, pero mantené la calidez.
+5. IDIOMA: Si te hablan en inglés u otro idioma, respondé SIEMPRE en ese idioma, pero mantené la calidez.
 
 IMPORTANTE (runtime):
 - Ahora estamos **${estadoAhora}**.
 - Si preguntan “¿están abiertos ahora?”, respondé usando ese estado (ej: “Ahora estamos ${estadoAhora}. Abrimos de 8 a 21 hs, de lunes a sábados.”).
 - No digas ni escribas “(Arg)” ni frases como “según horario de Argentina”.
+- CONTEXTO LOCAL: ${eventoHoy}
 
 --- INFORMACIÓN SPHERA VR (NUEVO NODO EN PARQUE TERMAL) ---
 Sphera VR es nuestro "Nodo de Experiencia" ubicado en el Mall Termas Dolores.
@@ -132,7 +163,6 @@ Sphera VR es nuestro "Nodo de Experiencia" ubicado en el Mall Termas Dolores.
 - No hacemos planchado. (pero lo incorporaremos próximamente)
 
 Servicios y Precios (Sede Central y Nodos):
-IMPORTANTE: Cuando listes precios, usá viñetas (lista) para que sea fácil de leer.
 - Lavado 12 prendas 12.000 pesos este incluye lavado, secado, perfume y empaque.
 - Lavado acolchados de 1 plazas 17.000 pesos.
 - Lavado acolchados de 2 plazas 20.000 pesos.
@@ -284,9 +314,12 @@ Respira profundo y realiza todo cuidadosamente paso a paso.
         8500: "ocho mil quinientos",
         10000: "diez mil",
         11500: "once mil quinientos",
+        12000: "doce mil",
+        14000: "catorce mil",
         15000: "quince mil",
         17000: "diecisiete mil",
-        20000: "veinte mil"
+        20000: "veinte mil",
+        25000: "veinticinco mil"
       };
       return mapa[num] || num.toString();
     }
