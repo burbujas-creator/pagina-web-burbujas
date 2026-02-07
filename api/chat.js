@@ -1,44 +1,66 @@
-import fetch from "node-fetch";
+// api/chat.js
 
 import { burbujasConfig } from "../config/burbujas.js";
-import systemPrompt from "../prompts/systemPrompt.js";
 import { estadoLocalAhora } from "../utils/estadoLocalAhora.js";
 import { obtenerContextoDolorense } from "../utils/contextoDolores.js";
 import { prepararTextoParaVoz } from "../utils/tts.js";
+import { construirPromptBurbujas } from "../prompts/burbujasPromptCompleto.js";
 
-export default async function handler(req, res) {
-  // -----------------------------------------------------------------------
-  // 1) CORS (basado en config)
-  // -----------------------------------------------------------------------
+function setCors(req, res) {
   const origin = req.headers.origin || "";
   const allowedOrigins = new Set(burbujasConfig.allowedOrigins || []);
 
+  // Preflight siempre responde, pero solo “autoriza” si el origin está permitido
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else if (!origin) {
-    // llamadas sin origin (por ejemplo, herramientas internas)
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  } else {
-    // si viene de otro dominio, no bloqueamos pero tampoco exponemos nada raro
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Vary", "Origin");
   }
 
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  // Preflight
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+  // Si hay Origin pero no está permitido, bloqueamos (excepto OPTIONS, que igual lo atendemos)
+  if (origin && !allowedOrigins.has(origin)) {
+    return { ok: false, origin };
   }
 
-  // Solo aceptamos POST para el chat
+  return { ok: true, origin };
+}
+
+function sanitizeHistory(conversationHistory, maxHistory) {
+  // Nos quedamos SOLO con user/assistant para evitar system duplicado desde el front
+  const filtered = (conversationHistory || []).filter(
+    (m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"
+  );
+
+  // Recorte final
+  return filtered.slice(-maxHistory);
+}
+
+export default async function handler(req, res) {
+  // -----------------------------------------------------------------------
+  // 1) CORS
+  // -----------------------------------------------------------------------
+  const cors = setCors(req, res);
+
+  if (req.method === "OPTIONS") {
+    // Si no está permitido, respondemos 403 igual (así el navegador no deja pegarle)
+    return res.status(cors.ok ? 200 : 403).end();
+  }
+
+  if (!cors.ok) {
+    return res.status(403).json({ error: "Origin not allowed" });
+  }
+
+  // -----------------------------------------------------------------------
+  // 2) Método
+  // -----------------------------------------------------------------------
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   // -----------------------------------------------------------------------
-  // 2) Variables de entorno
+  // 3) Variables de entorno
   // -----------------------------------------------------------------------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
@@ -53,17 +75,17 @@ export default async function handler(req, res) {
     const { conversationHistory } = req.body || {};
 
     if (!Array.isArray(conversationHistory)) {
-      return res.status(400).json({ error: "Missing conversationHistory" });
+      return res.status(400).json({ error: "Missing conversationHistory (array)" });
     }
 
     // -----------------------------------------------------------------------
-    // 3) Historial recortado (velocidad)
+    // 4) Historial recortado (velocidad)
     // -----------------------------------------------------------------------
     const maxHistory = burbujasConfig.openai?.maxHistory ?? 8;
-    const trimmedHistory = conversationHistory.slice(-maxHistory);
+    const trimmedHistory = sanitizeHistory(conversationHistory, maxHistory);
 
     // -----------------------------------------------------------------------
-    // 4) Estado abierto/cerrado + contexto local
+    // 5) Estado abierto/cerrado + contexto local
     // -----------------------------------------------------------------------
     const estadoAhora = estadoLocalAhora({
       timezone: burbujasConfig.timezone,
@@ -75,16 +97,17 @@ export default async function handler(req, res) {
     });
 
     // -----------------------------------------------------------------------
-    // 5) System prompt final (base + variables dinámicas)
+    // 6) Prompt “definitivo” (constructor)
     // -----------------------------------------------------------------------
-    const sistema = systemPrompt
-      .replaceAll("{{ESTADO_AHORA}}", estadoAhora)
-      .replaceAll("{{EVENTO_HOY}}", eventoHoy);
+    const sistema = construirPromptBurbujas({
+      estadoAhora,
+      eventoHoy,
+    });
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
     // -----------------------------------------------------------------------
-    // 6) OpenAI
+    // 7) OpenAI
     // -----------------------------------------------------------------------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -96,6 +119,7 @@ export default async function handler(req, res) {
         model: burbujasConfig.openai?.model || "gpt-4o-mini",
         messages,
         temperature: burbujasConfig.openai?.temperature ?? 0.7,
+        max_tokens: 350, // ajustable
       }),
     });
 
@@ -107,13 +131,12 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // 7) Post-proceso de texto
+    // 8) Post-proceso de texto
     // -----------------------------------------------------------------------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂";
 
-    // limpiar cositas molestas
     reply = reply
       .replace(/\s*\(arg\)\s*/gi, " ")
       .replace(/seg[uú]n\s+horario\s+de\s+argentina/gi, "")
@@ -121,7 +144,7 @@ export default async function handler(req, res) {
       .trim();
 
     // -----------------------------------------------------------------------
-    // 8) TTS (ElevenLabs) usando utils/tts.js
+    // 9) TTS (ElevenLabs)
     // -----------------------------------------------------------------------
     let audioBase64 = null;
 
@@ -139,6 +162,7 @@ export default async function handler(req, res) {
             headers: {
               "Content-Type": "application/json",
               "xi-api-key": ELEVEN_API_KEY,
+              Accept: "audio/mpeg",
             },
             body: JSON.stringify({
               text: voiceText,
