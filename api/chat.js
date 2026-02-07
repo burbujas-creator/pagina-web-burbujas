@@ -3,81 +3,126 @@ import fetch from "node-fetch";
 
 import { burbujasConfig } from "../config/burbujas.js";
 import systemPrompt from "../prompts/systemPrompt.js";
-import { estadoLocalAhora } from "../utils/estadoLocalAhora.js";
 import { obtenerContextoDolorense } from "../utils/contextoDolores.js";
 import { prepararTextoParaVoz } from "../utils/tts.js";
 
-// (Opcional) Si estás en Next.js / Vercel, esto ayuda a evitar límites chicos de body.
-// Si no lo necesitás o te da error por tu setup, podés borrarlo.
-export const config = {
-  api: {
-    bodyParser: { sizeLimit: "1mb" },
-  },
-};
-
-function formatFechaHoyAR({ timezone = "America/Argentina/Buenos_Aires" } = {}) {
+/**
+ * Fecha/hora real en AR usando Intl + timeZone
+ */
+function getAhoraAR({
+  timezone = "America/Argentina/Buenos_Aires",
+  locale = "es-AR",
+} = {}) {
   const now = new Date();
-  const fecha = new Intl.DateTimeFormat("es-AR", {
+
+  const partsFecha = new Intl.DateTimeFormat(locale, {
     timeZone: timezone,
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-  }).format(now);
+  }).formatToParts(now);
 
-  const hora = new Intl.DateTimeFormat("es-AR", {
+  const partsHora = new Intl.DateTimeFormat(locale, {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
-  }).format(now);
+    hour12: false,
+  }).formatToParts(now);
 
-  return { fecha, hora };
+  const get = (parts, type) => parts.find((p) => p.type === type)?.value;
+
+  const weekday = (get(partsFecha, "weekday") || "").toLowerCase();
+  const day = get(partsFecha, "day");
+  const month = (get(partsFecha, "month") || "").toLowerCase();
+  const year = get(partsFecha, "year");
+
+  const hour = get(partsHora, "hour");
+  const minute = get(partsHora, "minute");
+
+  // "sábado 7 de febrero de 2026"
+  const fechaLarga = `${weekday} ${day} de ${month} de ${year}`;
+  // "05:21"
+  const horaHHMM = `${hour}:${minute}`;
+
+  // Para lógica de abierto/cerrado, tomamos weekday/hour en AR:
+  // Obtenemos también dayOfWeek ISO (1=lun..7=dom) y hour/minute numéricos con formatToParts.
+  const dowMap = {
+    lunes: 1,
+    martes: 2,
+    miércoles: 3,
+    miercoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sábado: 6,
+    sabado: 6,
+    domingo: 7,
+  };
+
+  const dayOfWeekISO = dowMap[weekday] || null;
+  const hourNum = Number(hour);
+  const minuteNum = Number(minute);
+
+  return { now, fechaLarga, horaHHMM, weekday, dayOfWeekISO, hourNum, minuteNum };
 }
 
-function esConsultaFechaHora(text) {
-  if (!text || typeof text !== "string") return false;
-  const t = text.toLowerCase();
+/**
+ * Estado abierto/cerrado (simple) con horario fijo: Lun-Sáb 8 a 21.
+ * Si querés feriados/cierres especiales, lo ideal es meterlo en burbujasConfig (ej: closedDates)
+ */
+function estadoLocalAhoraAR({
+  timezone,
+  locale,
+  openHour = 8,
+  closeHour = 21,
+} = {}) {
+  const { dayOfWeekISO, hourNum } = getAhoraAR({ timezone, locale });
 
-  // consultas típicas
-  return (
-    /que\s*d[ií]a\s*es\s*hoy/.test(t) ||
-    /qu[eé]\s*fecha\s*es\s*hoy/.test(t) ||
-    /hoy\s*qu[eé]\s*d[ií]a\s*es/.test(t) ||
-    /qu[eé]\s*hora\s*es/.test(t) ||
-    /hora\s*actual/.test(t) ||
-    /fecha\s*actual/.test(t) ||
-    /d[ií]a\s*de\s*hoy/.test(t)
-  );
+  if (!dayOfWeekISO) return "No tengo confirmación exacta del estado del local ahora.";
+
+  const esDomingo = dayOfWeekISO === 7;
+  const esDiaLaboral = dayOfWeekISO >= 1 && dayOfWeekISO <= 6;
+  const dentroHorario = hourNum >= openHour && hourNum < closeHour;
+
+  if (esDomingo) return "Hoy es domingo: el local está cerrado.";
+  if (esDiaLaboral && dentroHorario) return "El local está abierto ahora (lunes a sábado de 8 a 21).";
+  if (esDiaLaboral && !dentroHorario) return "Ahora el local está cerrado (abrimos de lunes a sábado de 8 a 21).";
+
+  return "No tengo confirmación exacta del estado del local ahora.";
 }
 
-async function generarAudioEleven({ text, elevenApiKey, voiceId }) {
-  if (!elevenApiKey || !voiceId || !text) return null;
+/**
+ * Detecta consultas de fecha/hora para responder sin IA (cero alucinación)
+ */
+function detectarPreguntaFechaHora(texto = "") {
+  const t = texto.toLowerCase();
 
-  try {
-    const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "xi-api-key": elevenApiKey,
-      },
-      body: JSON.stringify({
-        text,
-        model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
-        voice_settings: burbujasConfig.eleven?.voiceSettings || {
-          stability: 0.6,
-          similarity_boost: 0.9,
-        },
-      }),
-    });
+  const esFecha =
+    /que dia es hoy|qué día es hoy|que día es hoy|fecha de hoy|hoy que dia|hoy qué día|hoy es que día|día de hoy/.test(
+      t
+    );
 
-    if (!tts.ok) return null;
+  const esHora =
+    /que hora es|qué hora es|hora actual|hora es|decime la hora|me decis la hora|me decís la hora/.test(t);
 
-    const buf = Buffer.from(await tts.arrayBuffer());
-    return `data:audio/mpeg;base64,${buf.toString("base64")}`;
-  } catch (e) {
-    console.error("TTS error:", e);
-    return null;
-  }
+  return { esFecha, esHora, esFechaOHora: esFecha || esHora };
+}
+
+/**
+ * Limpia historial que venga del front: SOLO user/assistant.
+ * (muy importante para que no se mezclen system prompts del cliente)
+ */
+function sanitizarHistorial(conversationHistory) {
+  if (!Array.isArray(conversationHistory)) return [];
+  return conversationHistory
+    .filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 0
+    )
+    .map((m) => ({ role: m.role, content: m.content }));
 }
 
 export default async function handler(req, res) {
@@ -90,10 +135,8 @@ export default async function handler(req, res) {
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else if (!origin) {
-    // llamadas sin origin (por ejemplo, herramientas internas)
     res.setHeader("Access-Control-Allow-Origin", "*");
   } else {
-    // si viene de otro dominio, no bloqueamos pero tampoco exponemos nada raro
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
@@ -101,109 +144,102 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  // Preflight
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  // Solo aceptamos POST para el chat
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   // -----------------------------------------------------------------------
   // 2) Variables de entorno
   // -----------------------------------------------------------------------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-  const ELEVEN_VOICE_ID =
-    process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId;
+  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId;
 
-  if (!OPENAI_API_KEY) {
-    return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
-  }
+  if (!OPENAI_API_KEY) return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
 
   try {
-    const body = req.body || {};
-    const conversationHistoryRaw = body.conversationHistory;
-
-    if (!Array.isArray(conversationHistoryRaw)) {
-      return res.status(400).json({ error: "Missing conversationHistory" });
-    }
+    const { conversationHistory } = req.body || {};
+    const cleanHistory = sanitizarHistorial(conversationHistory);
 
     // -----------------------------------------------------------------------
-    // 3) Sanitizar historial (NO confiar system del cliente)
-    //    - el cliente puede mandar "system" y pisarte reglas.
+    // 3) Historial recortado (velocidad)
     // -----------------------------------------------------------------------
-    const conversationHistory = conversationHistoryRaw
-      .filter(
-        (m) =>
-          m &&
-          typeof m === "object" &&
-          (m.role === "user" || m.role === "assistant") &&
-          typeof m.content === "string"
-      )
-      .map((m) => ({ role: m.role, content: m.content }));
+    const maxHistory = burbujasConfig.openai?.maxHistory ?? 10;
+    const trimmedHistory = cleanHistory.slice(-maxHistory);
 
     // -----------------------------------------------------------------------
-    // 4) Historial recortado (velocidad)
+    // 4) Fecha/Hora real AR + Estado + Evento local
     // -----------------------------------------------------------------------
-    const maxHistory = burbujasConfig.openai?.maxHistory ?? 8;
-    const trimmedHistory = conversationHistory.slice(-maxHistory);
+    const timezone = burbujasConfig.timezone || "America/Argentina/Buenos_Aires";
+    const locale = burbujasConfig.locale || "es-AR";
 
-    // -----------------------------------------------------------------------
-    // 5) Estado abierto/cerrado + contexto local + FECHA/HORA AR (anti-alucinación)
-    // -----------------------------------------------------------------------
-    const tz = burbujasConfig.timezone || "America/Argentina/Buenos_Aires";
-
-    const estadoAhora = estadoLocalAhora({
-      timezone: tz,
-      locale: burbujasConfig.locale,
-    });
-
-    const eventoHoy = obtenerContextoDolorense({ timezone: tz });
-
-    const { fecha: fechaHoy, hora: horaHoy } = formatFechaHoyAR({ timezone: tz });
+    const ahoraAR = getAhoraAR({ timezone, locale });
+    const estadoAhora = estadoLocalAhoraAR({ timezone, locale });
+    const eventoHoy = obtenerContextoDolorense({ timezone });
 
     // -----------------------------------------------------------------------
-    // 6) Atajo: si preguntan fecha/hora, respondemos nosotros (sin OpenAI)
-    //    Esto evita 100% que "invente" el día.
+    // 4.1) Atajo anti-alucinación (fecha/hora)
     // -----------------------------------------------------------------------
     const lastUserMsg = [...trimmedHistory].reverse().find((m) => m.role === "user")?.content || "";
-    if (esConsultaFechaHora(lastUserMsg)) {
-      const reply = `Hoy es ${fechaHoy}. Son las ${horaHoy}.`;
+    const q = detectarPreguntaFechaHora(lastUserMsg);
 
-      // TTS (si está habilitado)
+    if (q.esFechaOHora) {
+      let reply = "";
+
+      if (q.esFecha && q.esHora) {
+        reply = `Hoy es ${ahoraAR.fechaLarga} y son las ${ahoraAR.horaHHMM}.`;
+      } else if (q.esFecha) {
+        reply = `Hoy es ${ahoraAR.fechaLarga}.`;
+      } else if (q.esHora) {
+        reply = `Son las ${ahoraAR.horaHHMM}.`;
+      }
+
+      // TTS opcional
       let audioBase64 = null;
-      if (ELEVEN_API_KEY && ELEVEN_VOICE_ID) {
+      if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
         const voiceText = prepararTextoParaVoz(reply, {
           maxChars: burbujasConfig.eleven?.maxChars ?? 900,
           reemplazoWhatsApp: "por WhatsApp",
         });
 
-        audioBase64 = await generarAudioEleven({
-          text: voiceText,
-          elevenApiKey: ELEVEN_API_KEY,
-          voiceId: ELEVEN_VOICE_ID,
-        });
+        try {
+          const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "xi-api-key": ELEVEN_API_KEY },
+            body: JSON.stringify({
+              text: voiceText,
+              model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
+              voice_settings: burbujasConfig.eleven?.voiceSettings || {
+                stability: 0.6,
+                similarity_boost: 0.9,
+              },
+            }),
+          });
+
+          if (tts.ok) {
+            const buf = Buffer.from(await tts.arrayBuffer());
+            audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
+          }
+        } catch (e) {
+          console.error("TTS error:", e);
+        }
       }
 
       return res.status(200).json({ reply, audio: audioBase64 });
     }
 
     // -----------------------------------------------------------------------
-    // 7) System prompt final (base + variables dinámicas)
+    // 5) System prompt final (base + variables dinámicas)
     // -----------------------------------------------------------------------
     const sistema = systemPrompt
       .replaceAll("{{ESTADO_AHORA}}", estadoAhora)
       .replaceAll("{{EVENTO_HOY}}", eventoHoy)
-      .replaceAll("{{FECHA_HOY}}", fechaHoy)
-      .replaceAll("{{HORA_HOY}}", horaHoy);
+      .replaceAll("{{FECHA_HOY}}", ahoraAR.fechaLarga)
+      .replaceAll("{{HORA_AHORA}}", ahoraAR.horaHHMM);
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
     // -----------------------------------------------------------------------
-    // 8) OpenAI
+    // 6) OpenAI
     // -----------------------------------------------------------------------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -226,7 +262,7 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // 9) Post-proceso de texto (limpieza)
+    // 7) Post-proceso de texto
     // -----------------------------------------------------------------------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
@@ -239,7 +275,7 @@ export default async function handler(req, res) {
       .trim();
 
     // -----------------------------------------------------------------------
-    // 10) TTS (ElevenLabs) usando utils/tts.js
+    // 8) TTS (ElevenLabs)
     // -----------------------------------------------------------------------
     let audioBase64 = null;
 
@@ -249,11 +285,27 @@ export default async function handler(req, res) {
         reemplazoWhatsApp: "por WhatsApp",
       });
 
-      audioBase64 = await generarAudioEleven({
-        text: voiceText,
-        elevenApiKey: ELEVEN_API_KEY,
-        voiceId: ELEVEN_VOICE_ID,
-      });
+      try {
+        const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "xi-api-key": ELEVEN_API_KEY },
+          body: JSON.stringify({
+            text: voiceText,
+            model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
+            voice_settings: burbujasConfig.eleven?.voiceSettings || {
+              stability: 0.6,
+              similarity_boost: 0.9,
+            },
+          }),
+        });
+
+        if (tts.ok) {
+          const buf = Buffer.from(await tts.arrayBuffer());
+          audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
+        }
+      } catch (e) {
+        console.error("TTS error:", e);
+      }
     }
 
     return res.status(200).json({ reply, audio: audioBase64 });
