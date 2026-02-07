@@ -2,7 +2,8 @@
 import fetch from "node-fetch";
 
 import { burbujasConfig } from "../config/burbujas.js";
-import systemPrompt from "../prompts/systemPrompt.js";
+// CAMBIO IMPORTANTE: Importamos el constructor completo que trae precios y servicios
+import { construirPromptBurbujas } from "../prompts/burbujasPromptCompleto.js";
 import { obtenerContextoDolorense } from "../utils/contextoDolores.js";
 import { prepararTextoParaVoz } from "../utils/tts.js";
 
@@ -45,18 +46,10 @@ function getAhoraAR({
   // "05:21"
   const horaHHMM = `${hour}:${minute}`;
 
-  // Para lógica de abierto/cerrado, tomamos weekday/hour en AR:
-  // Obtenemos también dayOfWeek ISO (1=lun..7=dom) y hour/minute numéricos con formatToParts.
+  // Para lógica de abierto/cerrado
   const dowMap = {
-    lunes: 1,
-    martes: 2,
-    miércoles: 3,
-    miercoles: 3,
-    jueves: 4,
-    viernes: 5,
-    sábado: 6,
-    sabado: 6,
-    domingo: 7,
+    lunes: 1, martes: 2, miércoles: 3, miercoles: 3,
+    jueves: 4, viernes: 5, sábado: 6, sabado: 6, domingo: 7,
   };
 
   const dayOfWeekISO = dowMap[weekday] || null;
@@ -68,7 +61,6 @@ function getAhoraAR({
 
 /**
  * Estado abierto/cerrado (simple) con horario fijo: Lun-Sáb 8 a 21.
- * Si querés feriados/cierres especiales, lo ideal es meterlo en burbujasConfig (ej: closedDates)
  */
 function estadoLocalAhoraAR({
   timezone,
@@ -110,7 +102,6 @@ function detectarPreguntaFechaHora(texto = "") {
 
 /**
  * Limpia historial que venga del front: SOLO user/assistant.
- * (muy importante para que no se mezclen system prompts del cliente)
  */
 function sanitizarHistorial(conversationHistory) {
   if (!Array.isArray(conversationHistory)) return [];
@@ -230,11 +221,20 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     // 5) System prompt final (base + variables dinámicas)
     // -----------------------------------------------------------------------
-    const sistema = systemPrompt
-      .replaceAll("{{ESTADO_AHORA}}", estadoAhora)
-      .replaceAll("{{EVENTO_HOY}}", eventoHoy)
+    
+    // A) Generamos el prompt completo que tiene las REGLAS + PRECIOS
+    let rawSystem = construirPromptBurbujas({
+       estadoAhora: estadoAhora,
+       eventoHoy: eventoHoy
+    });
+
+    // B) Reemplazamos los placeholders de fecha/hora heredados del base
+    //    (y aseguramos que no queden los de estado/evento por las dudas)
+    const sistema = rawSystem
       .replaceAll("{{FECHA_HOY}}", ahoraAR.fechaLarga)
-      .replaceAll("{{HORA_AHORA}}", ahoraAR.horaHHMM);
+      .replaceAll("{{HORA_AHORA}}", ahoraAR.horaHHMM)
+      .replaceAll("{{ESTADO_AHORA}}", estadoAhora)
+      .replaceAll("{{EVENTO_HOY}}", eventoHoy);
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
