@@ -2,7 +2,6 @@
 import fetch from "node-fetch";
 
 import { burbujasConfig } from "../config/burbujas.js";
-// CAMBIO IMPORTANTE: Importamos el constructor completo que trae precios y servicios
 import { construirPromptBurbujas } from "../prompts/burbujasPromptCompleto.js";
 import { obtenerContextoDolorense } from "../utils/contextoDolores.js";
 import { prepararTextoParaVoz } from "../utils/tts.js";
@@ -148,7 +147,8 @@ export default async function handler(req, res) {
   if (!OPENAI_API_KEY) return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
 
   try {
-    const { conversationHistory } = req.body || {};
+    // ✅ RECIBIMOS userName DEL FRONTEND (además del historial)
+    const { conversationHistory, userName } = req.body || {};
     const cleanHistory = sanitizarHistorial(conversationHistory);
 
     // -----------------------------------------------------------------------
@@ -219,17 +219,17 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // 5) System prompt final (base + variables dinámicas)
+    // 5) System prompt final (base + variables dinámicas + NOMBRE DE USUARIO)
     // -----------------------------------------------------------------------
     
-    // A) Generamos el prompt completo que tiene las REGLAS + PRECIOS
+    // ✅ PASAMOS EL nombreUsuario AL CONSTRUCTOR DEL PROMPT
     let rawSystem = construirPromptBurbujas({
        estadoAhora: estadoAhora,
-       eventoHoy: eventoHoy
+       eventoHoy: eventoHoy,
+       nombreUsuario: userName || "Anónimo" 
     });
 
     // B) Reemplazamos los placeholders de fecha/hora heredados del base
-    //    (y aseguramos que no queden los de estado/evento por las dudas)
     const sistema = rawSystem
       .replaceAll("{{FECHA_HOY}}", ahoraAR.fechaLarga)
       .replaceAll("{{HORA_AHORA}}", ahoraAR.horaHHMM)
