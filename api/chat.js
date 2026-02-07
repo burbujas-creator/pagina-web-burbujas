@@ -1,7 +1,9 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
-  // ---------- CORS SENCILLO Y SEGURO ----------
+  // -----------------------------------------------------------------------
+  // 1. CORS SENCILLO Y SEGURO (TU VERSIÓN ORIGINAL)
+  // -----------------------------------------------------------------------
   const origin = req.headers.origin || "";
 
   const allowedOrigins = new Set([
@@ -37,7 +39,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // ---------- VARIABLES DE ENTORNO ----------
+  // -----------------------------------------------------------------------
+  // 2. VARIABLES DE ENTORNO
+  // -----------------------------------------------------------------------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
   const ELEVEN_VOICE_ID =
@@ -54,11 +58,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // ---------- LIMITAR HISTORIAL PARA IR MÁS RÁPIDO ----------
-    // Usamos solo los últimos 8 mensajes para que la llamada a OpenAI sea liviana
+    // Limitamos historial para velocidad
     const trimmedHistory = conversationHistory.slice(-8);
 
-    // ---------- 1. ESTADO "ABIERTO/CERRADO" SEGÚN HORA LOCAL DE BUENOS AIRES ----------
+    // -----------------------------------------------------------------------
+    // 3. ESTADO "ABIERTO/CERRADO" (TU LÓGICA EXACTA)
+    // -----------------------------------------------------------------------
     function estadoLocalAhora() {
       const ahora = new Date();
       const opciones = {
@@ -97,53 +102,52 @@ export default async function handler(req, res) {
 
     const estadoAhora = estadoLocalAhora();
 
-    // ---------- 2. CONTEXTO DE FIESTAS DOLORENSES (NUEVO) ----------
+    // -----------------------------------------------------------------------
+    // 4. NUEVO: CALENDARIO DE FIESTAS DOLORENSES (INFO AGREGADA)
+    // -----------------------------------------------------------------------
     function obtenerContextoDolorense() {
         const ahora = new Date();
         const fechaAR = new Date(ahora.toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
-        const mes = fechaAR.getMonth() + 1; // Enero es 0
+        const mes = fechaAR.getMonth() + 1; 
         const dia = fechaAR.getDate();
         
         let fiesta = "";
 
         // FEBRERO: Carnaval del Sol
         if (mes === 2) {
-            fiesta = "CONTEXTO TEMPORAL: Estamos en época del CARNAVAL DEL SOL. La ciudad festeja en el Corsódromo Antu Kawin (comparsas: Sheg Yenú, Sayen, Kuyén). Recordá que somos expertos sacando manchas de nieve, espuma y tierra del carnaval.";
+            fiesta = "CONTEXTO LOCAL HOY: Estamos en temporada de CARNAVAL DEL SOL. Se hace en el Corsódromo Antu Kawin. Comparsas: Sheg Yenú, Sayen, Kuyén. Recordá recomendar llevar abrigo a la noche y que limpiamos ropa manchada de nieve/espuma.";
         }
-        // MARZO: Fiesta Nacional de la Guitarra (aprox primera quincena)
+        // MARZO: Fiesta Nacional de la Guitarra
         else if (mes === 3 && dia <= 15) {
-            fiesta = "CONTEXTO TEMPORAL: Estamos en la FIESTA NACIONAL DE LA GUITARRA. Homenaje a Abel Fleury. Época de jineteada, desfiles y folklore. Lavamos mucha ropa de peña y bombachas de campo.";
+            fiesta = "CONTEXTO LOCAL HOY: Estamos en la FIESTA NACIONAL DE LA GUITARRA. Homenaje a Abel Fleury. Hay desfile tradicionalista y feria artesanal. Ideal lavar ropa de peña.";
         }
-        // MAYO: Torta Argentina (Semana del 25)
+        // MAYO: Torta Argentina
         else if (mes === 5 && dia >= 20 && dia <= 28) {
-            fiesta = "CONTEXTO TEMPORAL: Se celebra la FIESTA DE LA TORTA ARGENTINA (25 de Mayo) en Plaza Castelli. Receta histórica de Mulhall/Teitelman. Especial cuidado con manchas de chocolate caliente.";
+            fiesta = "CONTEXTO LOCAL HOY: FIESTA DE LA TORTA ARGENTINA (25 de Mayo) en Plaza Castelli. Receta histórica. Ojo con manchas de chocolate.";
         }
-        // AGOSTO: Aniversario (Semana del 21)
+        // AGOSTO: Aniversario
         else if (mes === 8 && dia >= 15 && dia <= 25) {
-            fiesta = "CONTEXTO TEMPORAL: Semana del ANIVERSARIO DE DOLORES (21 de Agosto). Primer Pueblo Patrio. Orgullo dolorense.";
+            fiesta = "CONTEXTO LOCAL HOY: ANIVERSARIO DE DOLORES (21 de Agosto). Primer Pueblo Patrio. Actos en Plaza Castelli.";
         }
         
         return fiesta;
     }
     const eventoHoy = obtenerContextoDolorense();
 
-    // ---------- 3. ENTRENAMIENTO (COMPLETO + SPHERA + PERSONALIDAD) ----------
+    // -----------------------------------------------------------------------
+    // 5. SYSTEM PROMPT (TU TEXTO ORIGINAL + REGLAS NUEVAS)
+    // -----------------------------------------------------------------------
     const sistema = `
 Sos "Burbujas IA", la identidad digital de la lavandería Burbujas en Dolores. 
 Tu misión es ayudar a los vecinos con la misma buena onda que si estuvieran en el local de Alem 280.
 
-REGLAS DE ORO PARA SONAR NATURAL (NO ROBOT):
+*** REGLAS DE ORO OBLIGATORIAS ***
 1. PERSONALIDAD: Hablá como un dolorense. Usá el "voseo" (vení, traé, fijate, sabés). 
 2. CERO LISTAS: Está PROHIBIDO responder usando listas, viñetas (bullets) o guiones. Escribe siempre en párrafos fluidos, conversacionales y naturales. Habla como un vecino, no como un folleto.
-3. BREVEDAD: No des vueltas. Respuestas cortas, al grano y con dos emojis máximo.
-4. LOCALÍA: Sabés que estamos en Alem y en el Mall de las Termas. Somos "nosotros", un equipo de acá.
-5. IDIOMA: Si te hablan en inglés u otro idioma, respondé SIEMPRE en ese idioma, pero mantené la calidez.
-
-IMPORTANTE (runtime):
-- Ahora estamos **${estadoAhora}**.
-- Si preguntan “¿están abiertos ahora?”, respondé usando ese estado (ej: “Ahora estamos ${estadoAhora}. Abrimos de 8 a 21 hs, de lunes a sábados.”).
-- No digas ni escribas “(Arg)” ni frases como “según horario de Argentina”.
-- CONTEXTO LOCAL: ${eventoHoy}
+3. IDIOMA ESPEJO: Si te hablan en inglés, respondé en inglés. Si es en portugués, en portugués. Mantené la calidez siempre.
+4. ESTADO ACTUAL: Ahora estamos **${estadoAhora}**.
+5. EVENTO LOCAL: ${eventoHoy}
+6. No digas ni escribas “(Arg)” ni frases como “según horario de Argentina”.
 
 --- INFORMACIÓN SPHERA VR (NUEVO NODO EN PARQUE TERMAL) ---
 Sphera VR es nuestro "Nodo de Experiencia" ubicado en el Mall Termas Dolores.
@@ -202,7 +206,7 @@ Historial de Sorteos:
 - Ganador Promoción "6 meses de lavados gratis": Martin Acuña (mayo 2024).
 - Ganadora del sorteo lavados gratis enero 2025 fue: Pamela Flores.
 
-SORTEO ACTUAL - Sorteo Burbujas María Becerra
+ULTIMO SORTEO  - Sorteo Burbujas María Becerra
 Nombre del sorteo: "Burbujas te lleva a ver a María Becerra".
 Premio: 2 entradas generales para el recital del 12 de diciembre de 2025 en el Estadio River Plate, Buenos Aires.
 Resultó ganador: Matías Montes de Oca.
@@ -250,7 +254,7 @@ Si piden videos de YouTube, sugiere y enlaza con nuestros videos https://www.you
 
 Música y Entretenimiento:
 - Ai Vibra: Música Original de Autor y Diseño Sonoro. Producción humana integral donde la IA se utiliza únicamente como instrumento y herramienta creativa.
-- Estilo: No digas que la música la "hace" la IA. Decí que es compuesta por Santiago/Burbujas usando tecnología de vanguardia.
+- Estilo: No digas que la música la "hace" la IA. Decí que es compuesta por el equipo creativo de Burbujas usando tecnología de vanguardia.
 Enlaces Ai Vibra:
 https://open.spotify.com/artist/3L4WxpiMyJ7aNIiCmWL0Hl
 https://music.apple.com/artist/ai-vibra/1754923352
@@ -272,7 +276,9 @@ Respira profundo y realiza todo cuidadosamente paso a paso.
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
-    // ---------- LLAMADA A OPENAI ----------
+    // -----------------------------------------------------------------------
+    // 6. LLAMADA A OPENAI
+    // -----------------------------------------------------------------------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -293,7 +299,9 @@ Respira profundo y realiza todo cuidadosamente paso a paso.
       return res.status(500).json({ error: msg });
     }
 
-    // ---------- POST-PROCESO DEL TEXTO ----------
+    // -----------------------------------------------------------------------
+    // 7. POST-PROCESO DEL TEXTO
+    // -----------------------------------------------------------------------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
@@ -305,7 +313,11 @@ Respira profundo y realiza todo cuidadosamente paso a paso.
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // ---------- MAPA DE NÚMEROS A TEXTO PARA TTS ----------
+    // -----------------------------------------------------------------------
+    // 8. TEXTO A VOZ (ELEVENLABS) CON MAPA DE NÚMEROS
+    // -----------------------------------------------------------------------
+    
+    // Mapa de números a texto para TTS
     function numeroATexto(num) {
       const mapa = {
         5000: "cinco mil",
@@ -324,7 +336,6 @@ Respira profundo y realiza todo cuidadosamente paso a paso.
       return mapa[num] || num.toString();
     }
 
-    // ---------- CONVERSIÓN DE TEXTO A VOZ (ELEVENLABS) ----------
     let audioBase64 = null;
 
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
