@@ -1,13 +1,14 @@
 import fetch from "node-fetch";
 
 import { burbujasConfig } from "../config/burbujas.js";
+import systemPrompt from "../prompts/systemPrompt.js";
 import { estadoLocalAhora } from "../utils/estadoLocalAhora.js";
 import { obtenerContextoDolorense } from "../utils/contextoDolores.js";
-import { construirPromptBurbujas } from "../prompts/burbujasPromptCompleto.js";
+import { prepararTextoParaVoz } from "../utils/tts.js";
 
 export default async function handler(req, res) {
   // -----------------------------------------------------------------------
-  // 1) CORS SENCILLO Y SEGURO (MISMA LÓGICA QUE TENÍAS)
+  // 1) CORS (basado en config)
   // -----------------------------------------------------------------------
   const origin = req.headers.origin || "";
   const allowedOrigins = new Set(burbujasConfig.allowedOrigins || []);
@@ -37,12 +38,12 @@ export default async function handler(req, res) {
   }
 
   // -----------------------------------------------------------------------
-  // 2) VARIABLES DE ENTORNO
+  // 2) Variables de entorno
   // -----------------------------------------------------------------------
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
   const ELEVEN_VOICE_ID =
-    process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId || "EXAVITQu4vr4xnSDxMaL";
+    process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId;
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
@@ -55,12 +56,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing conversationHistory" });
     }
 
-    // Limitamos historial para velocidad (como antes, pero configurable)
+    // -----------------------------------------------------------------------
+    // 3) Historial recortado (velocidad)
+    // -----------------------------------------------------------------------
     const maxHistory = burbujasConfig.openai?.maxHistory ?? 8;
     const trimmedHistory = conversationHistory.slice(-maxHistory);
 
     // -----------------------------------------------------------------------
-    // 3) ESTADO "ABIERTO/CERRADO" + CONTEXTO DOLORENSE (MOVIDO A UTILS)
+    // 4) Estado abierto/cerrado + contexto local
     // -----------------------------------------------------------------------
     const estadoAhora = estadoLocalAhora({
       timezone: burbujasConfig.timezone,
@@ -72,14 +75,16 @@ export default async function handler(req, res) {
     });
 
     // -----------------------------------------------------------------------
-    // 4) SYSTEM PROMPT DEFINITIVO (MOVIDO A prompts/)
+    // 5) System prompt final (base + variables dinámicas)
     // -----------------------------------------------------------------------
-    const sistema = construirPromptBurbujas({ estadoAhora, eventoHoy });
+    const sistema = systemPrompt
+      .replaceAll("{{ESTADO_AHORA}}", estadoAhora)
+      .replaceAll("{{EVENTO_HOY}}", eventoHoy);
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
     // -----------------------------------------------------------------------
-    // 5) LLAMADA A OPENAI
+    // 6) OpenAI
     // -----------------------------------------------------------------------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -102,12 +107,13 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // 6) POST-PROCESO DEL TEXTO (TU LIMPIEZA ORIGINAL)
+    // 7) Post-proceso de texto
     // -----------------------------------------------------------------------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
-      "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂🙂";
+      "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂";
 
+    // limpiar cositas molestas
     reply = reply
       .replace(/\s*\(arg\)\s*/gi, " ")
       .replace(/seg[uú]n\s+horario\s+de\s+argentina/gi, "")
@@ -115,76 +121,15 @@ export default async function handler(req, res) {
       .trim();
 
     // -----------------------------------------------------------------------
-    // 7) TEXTO A VOZ (ELEVENLABS) CON MAPA DE NÚMEROS (TU LÓGICA)
+    // 8) TTS (ElevenLabs) usando utils/tts.js
     // -----------------------------------------------------------------------
-
-    function numeroATexto(num) {
-      const mapa = {
-        5000: "cinco mil",
-        7000: "siete mil",
-        8000: "ocho mil",
-        8500: "ocho mil quinientos",
-        10000: "diez mil",
-        11500: "once mil quinientos",
-        12000: "doce mil",
-        14000: "catorce mil",
-        15000: "quince mil",
-        17000: "diecisiete mil",
-        20000: "veinte mil",
-        25000: "veinticinco mil",
-      };
-      return mapa[num] || num.toString();
-    }
-
     let audioBase64 = null;
 
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
-      let voiceText = reply
-        // enlaces Markdown → solo el texto
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-        // quitar URLs sueltas
-        .replace(/\bhttps?:\/\/\S+/gi, "")
-        // teléfonos → "por WhatsApp"
-        .replace(/\b2245\s*40\s*2689\b/g, "por WhatsApp")
-        .replace(/\b5492245402689\b/g, "por WhatsApp")
-        // símbolos
-        .replace(/@/g, " arroba ")
-        .replace(/\+/g, " más ")
-        .replace(/\$/g, " pesos ")
-        .replace(/\(arg\)/gi, "");
-
-      // Ajustes fonéticos
-      voiceText = voiceText.replace(/Sphera/gi, "Sfera");
-      voiceText = voiceText.replace(/\bVR\b/gi, "vé érre");
-
-      // Números grandes → texto (4 o 5 dígitos)
-      voiceText = voiceText.replace(/\b\d{4,5}\b/g, (num) =>
-        numeroATexto(Number(num))
-      );
-
-      // "hs" → "hora(s)"
-      voiceText = voiceText
-        .replace(/(\b1)\s*hs\b/gi, "$1 hora")
-        .replace(/(\d+)\s*hs\b/gi, "$1 horas")
-        .replace(/\bhrs?\b/gi, "horas")
-        .replace(/\bhs\b/gi, "horas");
-
-      // "lunes a sábados" variantes
-      voiceText = voiceText
-        .replace(
-          /\blun(?:es)?\s*[-–—]\s*s[áa]b(?:ado|ados)?\b/gi,
-          "lunes a sábados"
-        )
-        .replace(
-          /\blun(?:es)?\s*a\s*s[áa]b(?:ado|ados)?\b/gi,
-          "lunes a sábados"
-        );
-
-      // Limitar longitud para que el TTS sea más rápido
-      const maxChars = burbujasConfig.eleven?.maxChars ?? 900;
-      if (voiceText.length > maxChars) {
-        voiceText = voiceText.slice(0, maxChars);
-      }
+      const voiceText = prepararTextoParaVoz(reply, {
+        maxChars: burbujasConfig.eleven?.maxChars ?? 900,
+        reemplazoWhatsApp: "por WhatsApp",
+      });
 
       try {
         const tts = await fetch(
