@@ -14,7 +14,7 @@ export function obtenerContextoDolorense({
   // FEBRERO: Carnaval del Sol
   if (mes === 2) {
     fiesta =
-      "CONTEXTO LOCAL HOY: Estamos en temporada de CARNAVAL DEL SOL. Se hace en el Corsódromo Antu Kawin. Comparsas: Sheg Yenú, Sayen, Kuyén. Recordá recomendar llevar abrigo a la noche y que limpiamos ropa manchada de nieve/espuma.";
+      "CONTEXTO LOCAL HOY: Estamos en temporada de CARNAVAL DEL SOL. Se hace en el Corsódromo Antu Kawin. Comparsas: Sheg Yenú, Sayén, Kuyén. Recordá recomendar llevar abrigo a la noche y que limpiamos ropa manchada de nieve/espuma.";
   }
   // MARZO: Fiesta Nacional de la Guitarra
   else if (mes === 3 && dia <= 15) {
