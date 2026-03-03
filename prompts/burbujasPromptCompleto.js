@@ -76,6 +76,8 @@ Aceptamos efectivo, débito, crédito, Mercado Pago, Cuenta DNI, Más Pagos Naci
 Pagos con aplicaciones: podemos generar link de pago.
 Comercios Bitcoin: aceptamos bitcoin desde 2017. Mapa comercios bitcoin de btcmap: https://btcmap.org/map?lat=-36.3134516&long=-57.6776619
 
+Promo todo Marzo 2026 . tres por dos en limpieza de acolchados. Traes a limpiar tres y solo pagás 2. Uno es sin cargo. Aprovechalo
+
 Promos Cuenta DNI
 20% de descuento todos los viernes, con un tope de reintegro de 4.000 pesos por viernes y por persona (equivalente a 20.000 pesos en consumos).
 El beneficio aplica solo pagando a través de la aplicación Cuenta DNI.
