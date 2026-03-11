@@ -147,7 +147,7 @@ export default async function handler(req, res) {
   if (!OPENAI_API_KEY) return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
 
   try {
-    // ✅ RECIBIMOS userName DEL FRONTEND (además del historial)
+    // RECIBIMOS userName DEL FRONTEND (además del historial)
     const { conversationHistory, userName } = req.body || {};
     const cleanHistory = sanitizarHistorial(conversationHistory);
 
@@ -222,7 +222,7 @@ export default async function handler(req, res) {
     // 5) System prompt final (base + variables dinámicas + NOMBRE DE USUARIO)
     // -----------------------------------------------------------------------
     
-    // ✅ PASAMOS EL nombreUsuario AL CONSTRUCTOR DEL PROMPT
+    // PASAMOS EL nombreUsuario AL CONSTRUCTOR DEL PROMPT
     let rawSystem = construirPromptBurbujas({
        estadoAhora: estadoAhora,
        eventoHoy: eventoHoy,
@@ -274,13 +274,17 @@ export default async function handler(req, res) {
       .replace(/\s{2,}/g, " ")
       .trim();
 
+    // Elimina el punto si está entre números (ej: 60.000 -> 60000)
+    // Esto es exclusivo para evitar que ElevenLabs se coma los ceros
+    const replyLimpiaParaVoz = reply.replace(/(\d)\.(\d{3})/g, '$1$2');
+
     // -----------------------------------------------------------------------
     // 8) TTS (ElevenLabs)
     // -----------------------------------------------------------------------
     let audioBase64 = null;
 
     if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
-      const voiceText = prepararTextoParaVoz(reply, {
+      const voiceText = prepararTextoParaVoz(replyLimpiaParaVoz, {
         maxChars: burbujasConfig.eleven?.maxChars ?? 900,
         reemplazoWhatsApp: "por WhatsApp",
       });
@@ -308,6 +312,8 @@ export default async function handler(req, res) {
       }
     }
 
+    // Retornamos el 'reply' original (con puntos) para el chat de texto, 
+    // y el audio generado con el texto sin puntos.
     return res.status(200).json({ reply, audio: audioBase64 });
   } catch (err) {
     console.error("Chat API error:", err);
