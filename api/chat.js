@@ -1,5 +1,4 @@
 // api/chat.js
-import fetch from "node-fetch";
 
 import { burbujasConfig } from "../config/burbujas.js";
 import { construirPromptBurbujas } from "../prompts/burbujasPromptCompleto.js";
@@ -40,15 +39,19 @@ function getAhoraAR({
   const hour = get(partsHora, "hour");
   const minute = get(partsHora, "minute");
 
-  // "sábado 7 de febrero de 2026"
   const fechaLarga = `${weekday} ${day} de ${month} de ${year}`;
-  // "05:21"
   const horaHHMM = `${hour}:${minute}`;
 
-  // Para lógica de abierto/cerrado
   const dowMap = {
-    lunes: 1, martes: 2, miércoles: 3, miercoles: 3,
-    jueves: 4, viernes: 5, sábado: 6, sabado: 6, domingo: 7,
+    lunes: 1,
+    martes: 2,
+    miércoles: 3,
+    miercoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sábado: 6,
+    sabado: 6,
+    domingo: 7,
   };
 
   const dayOfWeekISO = dowMap[weekday] || null;
@@ -59,7 +62,7 @@ function getAhoraAR({
 }
 
 /**
- * Estado abierto/cerrado (simple) con horario fijo: Lun-Sáb 8 a 21.
+ * Estado abierto/cerrado
  */
 function estadoLocalAhoraAR({
   timezone,
@@ -83,15 +86,13 @@ function estadoLocalAhoraAR({
 }
 
 /**
- * Detecta consultas de fecha/hora para responder sin IA (cero alucinación)
+ * Detecta consultas de fecha/hora para responder sin IA
  */
 function detectarPreguntaFechaHora(texto = "") {
-  const t = texto.toLowerCase();
+  const t = String(texto).toLowerCase();
 
   const esFecha =
-    /que dia es hoy|qué día es hoy|que día es hoy|fecha de hoy|hoy que dia|hoy qué día|hoy es que día|día de hoy/.test(
-      t
-    );
+    /que dia es hoy|qué día es hoy|que día es hoy|fecha de hoy|hoy que dia|hoy qué día|hoy es que día|día de hoy/.test(t);
 
   const esHora =
     /que hora es|qué hora es|hora actual|hora es|decime la hora|me decis la hora|me decís la hora/.test(t);
@@ -104,6 +105,7 @@ function detectarPreguntaFechaHora(texto = "") {
  */
 function sanitizarHistorial(conversationHistory) {
   if (!Array.isArray(conversationHistory)) return [];
+
   return conversationHistory
     .filter(
       (m) =>
@@ -112,20 +114,21 @@ function sanitizarHistorial(conversationHistory) {
         typeof m.content === "string" &&
         m.content.trim().length > 0
     )
-    .map((m) => ({ role: m.role, content: m.content }));
+    .map((m) => ({
+      role: m.role,
+      content: m.content.trim(),
+    }));
 }
 
-export default async function handler(req, res) {
-  // -----------------------------------------------------------------------
-  // 1) CORS (basado en config)
-  // -----------------------------------------------------------------------
+/**
+ * CORS
+ */
+function setCorsHeaders(req, res) {
   const origin = req.headers.origin || "";
   const allowedOrigins = new Set(burbujasConfig.allowedOrigins || []);
 
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else if (!origin) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
   } else {
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
@@ -133,33 +136,79 @@ export default async function handler(req, res) {
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+/**
+ * TTS ElevenLabs
+ */
+async function generarAudioBase64(texto, ELEVEN_API_KEY, ELEVEN_VOICE_ID) {
+  if (!ELEVEN_API_KEY || !ELEVEN_VOICE_ID || !texto) return null;
 
-  // -----------------------------------------------------------------------
-  // 2) Variables de entorno
-  // -----------------------------------------------------------------------
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-  const ELEVEN_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId;
-
-  if (!OPENAI_API_KEY) return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
+  const voiceText = prepararTextoParaVoz(texto, {
+    maxChars: burbujasConfig.eleven?.maxChars ?? 900,
+    reemplazoWhatsApp: "por WhatsApp",
+  });
 
   try {
-    // RECIBIMOS userName DEL FRONTEND (además del historial)
-    const { conversationHistory, userName } = req.body || {};
+    const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "xi-api-key": ELEVEN_API_KEY,
+      },
+      body: JSON.stringify({
+        text: voiceText,
+        model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
+        voice_settings: burbujasConfig.eleven?.voiceSettings || {
+          stability: 0.6,
+          similarity_boost: 0.9,
+        },
+      }),
+    });
+
+    if (!tts.ok) {
+      const errText = await tts.text().catch(() => "");
+      console.error("ElevenLabs error:", tts.status, errText);
+      return null;
+    }
+
+    const buf = Buffer.from(await tts.arrayBuffer());
+    return `data:audio/mpeg;base64,${buf.toString("base64")}`;
+  } catch (error) {
+    console.error("TTS error:", error);
+    return null;
+  }
+}
+
+export default async function handler(req, res) {
+  setCorsHeaders(req, res);
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "";
+  const ELEVEN_VOICE_ID =
+    process.env.ELEVENLABS_VOICE_ID || burbujasConfig.eleven?.defaultVoiceId || "";
+
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
+  }
+
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const { conversationHistory = [], userName = "Anónimo" } = body;
+
     const cleanHistory = sanitizarHistorial(conversationHistory);
 
-    // -----------------------------------------------------------------------
-    // 3) Historial recortado (velocidad)
-    // -----------------------------------------------------------------------
     const maxHistory = burbujasConfig.openai?.maxHistory ?? 10;
     const trimmedHistory = cleanHistory.slice(-maxHistory);
 
-    // -----------------------------------------------------------------------
-    // 4) Fecha/Hora real AR + Estado + Evento local
-    // -----------------------------------------------------------------------
     const timezone = burbujasConfig.timezone || "America/Argentina/Buenos_Aires";
     const locale = burbujasConfig.locale || "es-AR";
 
@@ -167,10 +216,9 @@ export default async function handler(req, res) {
     const estadoAhora = estadoLocalAhoraAR({ timezone, locale });
     const eventoHoy = obtenerContextoDolorense({ timezone });
 
-    // -----------------------------------------------------------------------
-    // 4.1) Atajo anti-alucinación (fecha/hora)
-    // -----------------------------------------------------------------------
-    const lastUserMsg = [...trimmedHistory].reverse().find((m) => m.role === "user")?.content || "";
+    const lastUserMsg =
+      [...trimmedHistory].reverse().find((m) => m.role === "user")?.content || "";
+
     const q = detectarPreguntaFechaHora(lastUserMsg);
 
     if (q.esFechaOHora) {
@@ -184,52 +232,21 @@ export default async function handler(req, res) {
         reply = `Son las ${ahoraAR.horaHHMM}.`;
       }
 
-      // TTS opcional
-      let audioBase64 = null;
-      if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
-        const voiceText = prepararTextoParaVoz(reply, {
-          maxChars: burbujasConfig.eleven?.maxChars ?? 900,
-          reemplazoWhatsApp: "por WhatsApp",
-        });
-
-        try {
-          const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "xi-api-key": ELEVEN_API_KEY },
-            body: JSON.stringify({
-              text: voiceText,
-              model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
-              voice_settings: burbujasConfig.eleven?.voiceSettings || {
-                stability: 0.6,
-                similarity_boost: 0.9,
-              },
-            }),
-          });
-
-          if (tts.ok) {
-            const buf = Buffer.from(await tts.arrayBuffer());
-            audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
-          }
-        } catch (e) {
-          console.error("TTS error:", e);
-        }
-      }
+      const audioBase64 = await generarAudioBase64(
+        reply,
+        ELEVEN_API_KEY,
+        ELEVEN_VOICE_ID
+      );
 
       return res.status(200).json({ reply, audio: audioBase64 });
     }
 
-    // -----------------------------------------------------------------------
-    // 5) System prompt final (base + variables dinámicas + NOMBRE DE USUARIO)
-    // -----------------------------------------------------------------------
-    
-    // PASAMOS EL nombreUsuario AL CONSTRUCTOR DEL PROMPT
-    let rawSystem = construirPromptBurbujas({
-       estadoAhora: estadoAhora,
-       eventoHoy: eventoHoy,
-       nombreUsuario: userName || "Anónimo" 
+    const rawSystem = construirPromptBurbujas({
+      estadoAhora,
+      eventoHoy,
+      nombreUsuario: userName,
     });
 
-    // B) Reemplazamos los placeholders de fecha/hora heredados del base
     const sistema = rawSystem
       .replaceAll("{{FECHA_HOY}}", ahoraAR.fechaLarga)
       .replaceAll("{{HORA_AHORA}}", ahoraAR.horaHHMM)
@@ -238,9 +255,6 @@ export default async function handler(req, res) {
 
     const messages = [{ role: "system", content: sistema }, ...trimmedHistory];
 
-    // -----------------------------------------------------------------------
-    // 6) OpenAI
-    // -----------------------------------------------------------------------
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -258,12 +272,10 @@ export default async function handler(req, res) {
 
     if (!openaiRes.ok || openaiData?.error) {
       const msg = openaiData?.error?.message || "OpenAI error";
+      console.error("OpenAI API error:", msg);
       return res.status(500).json({ error: msg });
     }
 
-    // -----------------------------------------------------------------------
-    // 7) Post-proceso de texto
-    // -----------------------------------------------------------------------
     let reply =
       openaiData?.choices?.[0]?.message?.content?.trim() ||
       "Perdón, no pude generar respuesta. ¿Querés que lo intente de nuevo? 🙂";
@@ -274,46 +286,14 @@ export default async function handler(req, res) {
       .replace(/\s{2,}/g, " ")
       .trim();
 
-    // Elimina el punto si está entre números (ej: 60.000 -> 60000)
-    // Esto es exclusivo para evitar que ElevenLabs se coma los ceros
-    const replyLimpiaParaVoz = reply.replace(/(\d)\.(\d{3})/g, '$1$2');
+    const replyLimpiaParaVoz = reply.replace(/(\d)\.(\d{3})/g, "$1$2");
 
-    // -----------------------------------------------------------------------
-    // 8) TTS (ElevenLabs)
-    // -----------------------------------------------------------------------
-    let audioBase64 = null;
+    const audioBase64 = await generarAudioBase64(
+      replyLimpiaParaVoz,
+      ELEVEN_API_KEY,
+      ELEVEN_VOICE_ID
+    );
 
-    if (ELEVEN_API_KEY && ELEVEN_VOICE_ID && reply) {
-      const voiceText = prepararTextoParaVoz(replyLimpiaParaVoz, {
-        maxChars: burbujasConfig.eleven?.maxChars ?? 900,
-        reemplazoWhatsApp: "por WhatsApp",
-      });
-
-      try {
-        const tts = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "xi-api-key": ELEVEN_API_KEY },
-          body: JSON.stringify({
-            text: voiceText,
-            model_id: burbujasConfig.eleven?.modelId || "eleven_multilingual_v2",
-            voice_settings: burbujasConfig.eleven?.voiceSettings || {
-              stability: 0.6,
-              similarity_boost: 0.9,
-            },
-          }),
-        });
-
-        if (tts.ok) {
-          const buf = Buffer.from(await tts.arrayBuffer());
-          audioBase64 = `data:audio/mpeg;base64,${buf.toString("base64")}`;
-        }
-      } catch (e) {
-        console.error("TTS error:", e);
-      }
-    }
-
-    // Retornamos el 'reply' original (con puntos) para el chat de texto, 
-    // y el audio generado con el texto sin puntos.
     return res.status(200).json({ reply, audio: audioBase64 });
   } catch (err) {
     console.error("Chat API error:", err);
