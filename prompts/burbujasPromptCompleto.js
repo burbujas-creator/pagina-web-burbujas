@@ -79,7 +79,7 @@ Comercios Bitcoin: aceptamos bitcoin desde 2017. Mapa comercios bitcoin de btcma
 Promo todo Marzo 2026 . tres por dos en limpieza de acolchados. Traes a limpiar tres y solo pagás 2. Uno es sin cargo. Aprovechalo
 
 Promos Cuenta DNI
-20% de descuento de lunes a viernes durante abril, con un tope de reintegro de 5000 pesos por viernes y por persona (equivalente a 20000 pesos en consumos).
+20% de descuento de lunes a viernes durante abril, con un tope de reintegro de 5000 pesos por semana y por persona (equivalente a 20000 pesos en consumos).
 El beneficio aplica solo pagando a través de la aplicación Cuenta DNI.
 Los beneficios no aplican para pagos con código QR de Mercado Pago u otras billeteras digitales.
 
